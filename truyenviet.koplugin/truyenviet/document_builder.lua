@@ -97,37 +97,56 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
     archive:setZipCompression("store")
 
     local ok, result, result_err = pcall(function()
+        local copas = require("copas")
+        local active_downloads = 0
+        local max_concurrent = 8
+        local has_error = false
+        local archive_err = nil
+
         for index, image in ipairs(payload.images) do
-            local content, headers_or_error, url = downloadImage(image, payload.referer)
-            if not content then
-                return nil, string.format(
-                    "Không tải được ảnh %d/%d: %s",
-                    index,
-                    #payload.images,
-                    tostring(headers_or_error)
-                )
+            while active_downloads >= max_concurrent do
+                copas.step()
             end
-            if not ImageUtils:isSupported(headers_or_error, content) then
-                return nil, string.format(
-                    "Ảnh %d/%d không phải định dạng ảnh hợp lệ",
-                    index,
-                    #payload.images
-                )
-            end
+            
+            if has_error then break end
 
-            local extension = ImageUtils:detectExtension(
-                headers_or_error,
-                content,
-                url
-            )
-            local entry_name = string.format("%04d.%s", index, extension)
-            if not archive:addFileFromMemory(entry_name, content, os.time()) then
-                return nil, archive.err or ("Không thể ghi " .. entry_name)
-            end
+            active_downloads = active_downloads + 1
+            copas.addthread(function()
+                local last_error
+                local content, headers, final_url
+                for _, url in ipairs(image.urls) do
+                    local c, e, h = Http:requestAsync("GET", url, nil, {
+                        ["Referer"] = payload.referer or "",
+                        ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                    })
+                    if c then
+                        content = c
+                        headers = h
+                        final_url = url
+                        break
+                    end
+                    last_error = e
+                end
 
-            if index % 8 == 0 then
-                collectgarbage()
-            end
+                if content and ImageUtils:isSupported(headers, content) then
+                    local extension = ImageUtils:detectExtension(headers, content, final_url)
+                    local entry_name = string.format("%04d.%s", index, extension)
+                    if not archive:addFileFromMemory(entry_name, content, os.time()) then
+                        has_error = true
+                        archive_err = archive.err or ("Không thể ghi " .. entry_name)
+                    end
+                end
+
+                active_downloads = active_downloads - 1
+            end)
+        end
+
+        while active_downloads > 0 do
+            copas.step()
+        end
+
+        if has_error then
+            error(archive_err)
         end
         return true
     end)

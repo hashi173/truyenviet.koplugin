@@ -50,6 +50,14 @@ function Reader:initializeFromReaderUI(ui)
                 self:resetSession()
             end
         end
+
+        listener.onEndOfBook = function()
+            if self.on_next_chapter_callback then
+                self.on_next_chapter_callback()
+                return true
+            end
+        end
+
         table.insert(ui, 2, listener)
     end)
 end
@@ -67,8 +75,9 @@ function Reader:addToMainMenu(menu_items)
             text = "Chương tiếp theo",
             sorting_hint = "main",
             callback = function()
-                local cb = self.on_next_chapter_callback
-                self:returnToPlugin(cb)
+                if self.on_next_chapter_callback then
+                    self.on_next_chapter_callback()
+                end
             end,
         }
     end

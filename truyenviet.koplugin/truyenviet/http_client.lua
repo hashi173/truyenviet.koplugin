@@ -82,6 +82,49 @@ function HttpClient:get(url, headers)
     return self:request("GET", url, nil, headers)
 end
 
+function HttpClient:postJson(url, payload, headers)
+    local body = ko_util.jsonEncode(payload)
+    headers = mergeHeaders(headers)
+    headers["Content-Type"] = "application/json"
+    return self:request("POST", url, body, headers)
+end
+
+function HttpClient:requestAsync(method, url, body, headers)
+    if not validateUrl(url) then
+        return nil, "URL không hợp lệ: " .. tostring(url)
+    end
+    local copas_http = require("copas.http")
+    local sink = {}
+    local request_headers = mergeHeaders(headers)
+    if body then
+        request_headers["Content-Length"] = tostring(#body)
+    end
+    local reqt = {
+        url = url,
+        method = method,
+        headers = request_headers,
+        source = body and ltn12.source.string(body) or nil,
+        sink = ltn12.sink.table(sink),
+        redirect = true,
+        timeout = self.total_timeout
+    }
+    local ok, result, code, response_headers, status = pcall(function()
+        return copas_http.request(reqt)
+    end)
+    if not ok then
+        return nil, tostring(result)
+    end
+    if not result then
+        return nil, tostring(code)
+    end
+    local numeric_code = tonumber(code)
+    if not numeric_code or numeric_code < 200 or numeric_code >= 300 then
+        return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code))
+    end
+    local content = table.concat(sink)
+    return content, nil, response_headers, numeric_code
+end
+
 function HttpClient:getJson(url, headers)
     headers = mergeHeaders(headers)
     headers["Accept"] = "application/json"

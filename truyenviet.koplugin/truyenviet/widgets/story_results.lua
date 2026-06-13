@@ -88,17 +88,15 @@ function StoryItem:init()
 
     local text_group = VerticalGroup:new{
         align = "left",
-        TextBoxWidget:new{
+        TextWidget:new{
             text = self.story.title,
             face = Font:getFace("smallinfofont", 22),
             bold = true,
-            width = text_width,
-            height = math.max(self.height - source_height - padding * 3, 1),
+            max_width = text_width,
         },
         VerticalSpan:new{ width = padding },
         self.source_widget,
     }
-
     self[1] = FrameContainer:new{
         width = self.width,
         height = self.height,

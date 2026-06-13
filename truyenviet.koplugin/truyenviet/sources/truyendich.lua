@@ -58,19 +58,11 @@ function Source:search(query)
 end
 
 function Source:parseListing(html, page)
-    local total_pages = 1
-    local max_page = html:match("<!%-%- %-%-> / %s*<!%-%- %-%->(%d+)")
-    if max_page then
-        total_pages = tonumber(max_page)
-    else
-        total_pages = Util.maxPage(html, page)
-    end
-
     return {
         stories = self:parseSearch(html),
         genres = Util.parseGenres(html, self.base_url),
         page = page or 1,
-        total_pages = total_pages,
+        total_pages = 9999,
     }
 end
 
@@ -145,20 +137,12 @@ function Source:parseStoryPage(html, story, page)
         end
     end
 
-    local total_pages = 1
-    local max_page = html:match("<!%-%- %-%-> / %s*<!%-%- %-%->(%d+)")
-    if max_page then
-        total_pages = tonumber(max_page)
-    else
-        total_pages = Util.maxPage(html, page)
-    end
-
     story.details = self:parseStoryDetails(html)
     return {
         story = story,
         chapters = Util.uniqueBy(chapters, "url"),
         page = page or 1,
-        total_pages = total_pages,
+        total_pages = 9999,
     }
 end
 
@@ -176,9 +160,12 @@ function Source:getStoryPage(story, page)
 end
 
 function Source:parseChapter(html, chapter)
-    local chapter_title = Util.stripTags(html:match('<h2[^>]*chapter%-title[^>]*>([%s%S]-)</h2>'))
+    local chapter_title = Util.stripTags(html:match('<h1[^>]*itemProp="name"[^>]*>([%s%S]-)</h1>')) or Util.stripTags(html:match('<h2[^>]*chapter%-title[^>]*>([%s%S]-)</h2>'))
 
-    local start_at = html:find('id="chapter%-c"')
+    local start_at = html:find('id="original-content-tab"', 1, true)
+    if not start_at then
+        start_at = html:find('id="chapter-c"', 1, true)
+    end
     if not start_at then
         return nil, "Không tìm thấy nội dung chương"
     end

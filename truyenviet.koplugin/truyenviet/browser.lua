@@ -4,6 +4,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local Menu = require("ui/widget/menu")
 local NetworkMgr = require("ui/network/manager")
+local Notification = require("ui/widget/notification")
 local Screen = require("device").screen
 local TextViewer = require("ui/widget/textviewer")
 local Trapper = require("ui/trapper")
@@ -264,10 +265,8 @@ function Browser:showRoot()
                 return tostring(#SourceRegistry:listEnabled())
             end,
             callback = function()
-                closeAndRun(view, function()
-                    self:showSearchDialog(nil, function()
-                        self:showRoot()
-                    end)
+                self:showSearchDialog(nil, function()
+                    self:showRoot()
                 end)
             end,
         },
@@ -364,23 +363,17 @@ function Browser:showRoot()
         table.insert(items, {
             text = "Kiểm tra cập nhật",
             callback = function()
-                closeAndRun(view, function()
-                    local Http = require("truyenviet/http_client")
-                    runOnline(function()
-                        local res, err = withLoading("Đang kiểm tra cập nhật...", function()
-                            local response, req_err = Http:get("https://api.github.com/repos/hashi173/truyenviet.koplugin/releases/latest")
-                            if not response then error(req_err or "Lỗi kết nối") end
-                            return response
-                        end)
+                local Http = require("truyenviet/http_client")
+                runOnline(function()
+                    local res, err = withLoading("Đang kiểm tra cập nhật...", function()
+                        local response, req_err = Http:get("https://api.github.com/repos/hashi173/truyenviet.koplugin/releases/latest")
+                        if not response then error(req_err or "Lỗi kết nối") end
+                        return response
+                    end)
                     if not res then
                         UIManager:show(ConfirmBox:new{
                             text = "Lỗi kết nối: " .. tostring(err),
                             ok_text = "Đóng",
-                            ok_callback = function()
-                                UIManager:nextTick(function()
-                                    self:showRoot()
-                                end)
-                            end,
                         })
                         return
                     end
@@ -398,11 +391,6 @@ function Browser:showRoot()
                                         UIManager:show(ConfirmBox:new{
                                             text = "Không tìm thấy file cài đặt.",
                                             ok_text = "Đóng",
-                                            ok_callback = function()
-                                                UIManager:nextTick(function()
-                                                    self:showRoot()
-                                                end)
-                                            end,
                                         })
                                         return
                                     end
@@ -451,44 +439,23 @@ function Browser:showRoot()
                                         UIManager:show(ConfirmBox:new{
                                             text = "Cập nhật thành công! Vui lòng khởi động lại KOReader.",
                                             ok_text = "Đóng",
-                                            ok_callback = function()
-                                                UIManager:nextTick(function()
-                                                    self:showRoot()
-                                                end)
-                                            end,
                                         })
                                     else
                                         UIManager:show(ConfirmBox:new{
                                             text = "Cập nhật thất bại: " .. tostring(dl_err),
                                             ok_text = "Đóng",
-                                            ok_callback = function()
-                                                UIManager:nextTick(function()
-                                                    self:showRoot()
-                                                end)
-                                            end,
                                         })
                                     end
                                 end)
                             end,
                             cancel_text = "Để sau",
-                            cancel_callback = function()
-                                UIManager:nextTick(function()
-                                    self:showRoot()
-                                end)
-                            end,
                         })
                     else
                         UIManager:show(ConfirmBox:new{
                             text = "Bạn đang dùng phiên bản mới nhất (" .. current_version .. ")",
                             ok_text = "Đóng",
-                            ok_callback = function()
-                                UIManager:nextTick(function()
-                                    self:showRoot()
-                                end)
-                            end,
                         })
                     end
-                end)
                 end)
             end,
         })
@@ -618,71 +585,113 @@ function Browser:search(source, query, on_return_callback)
     end)
 end
 
-function Browser:browseSource(source, genre, page, on_return_callback)
+function Browser:browseSource(source, genre, local_page, on_return_callback)
+    local ITEMS_PER_PAGE = 10
+    self.chunks_per_page = self.chunks_per_page or {}
+    local cpp = self.chunks_per_page[source.id] or 1
+    
+    local server_page = math.ceil(local_page / cpp)
+    local chunk_index = ((local_page - 1) % cpp) + 1
+
     runOnline(function()
-        local listing, err = withLoading(
-            string.format(
-                "Đang tải %s...\nTrang %d",
-                genre and genre.name or "truyện đã hoàn thành",
-                page
-            ),
-            function()
-                local result, fetch_err
-                if genre then
-                    result, fetch_err = source:getGenre(genre, page)
-                else
-                    result, fetch_err = source:getCompleted(page)
+        local result, err
+        local cache = self.cached_listing
+        if cache and cache.source_id == source.id and cache.genre_name == (genre and genre.name or nil) and cache.server_page == server_page then
+            result = cache.listing
+        else
+            result, err = withLoading(
+                string.format(
+                    "Đang tải %s...\nTrang %d",
+                    genre and genre.name or "truyện đã hoàn thành",
+                    server_page
+                ),
+                function()
+                    local r, e
+                    if genre then
+                        r, e = source:getGenre(genre, server_page)
+                    else
+                        r, e = source:getCompleted(server_page)
+                    end
+                    return r, e
                 end
-                if result then
-                    CoverCache:prefetch(result.stories, SourceRegistry)
-                end
-                return result, fetch_err
+            )
+            if result then
+                self.cached_listing = {
+                    source_id = source.id,
+                    genre_name = genre and genre.name or nil,
+                    server_page = server_page,
+                    listing = result,
+                }
+                cpp = math.max(1, math.ceil(#result.stories / ITEMS_PER_PAGE))
+                self.chunks_per_page[source.id] = cpp
             end
-        )
-        if not listing then
+        end
+
+        if not result then
             showError(err, on_return_callback)
             return
         end
-        if #listing.stories == 0 then
+        if #result.stories == 0 then
             showError("Không có truyện ở trang này.", on_return_callback)
             return
         end
+
+        cpp = self.chunks_per_page[source.id]
+        chunk_index = math.min(chunk_index, cpp)
+        
+        local start_idx = (chunk_index - 1) * ITEMS_PER_PAGE + 1
+        local end_idx = math.min(chunk_index * ITEMS_PER_PAGE, #result.stories)
+        
+        local chunked_stories = {}
+        for i = start_idx, end_idx do
+            if result.stories[i] then
+                table.insert(chunked_stories, result.stories[i])
+            end
+        end
+
+        CoverCache:prefetch(chunked_stories, SourceRegistry)
+
+        local local_total_pages = result.total_pages * cpp
+
         local function showCurrentListing()
+            UIManager:show(Notification:new{
+                text = string.format("Đã chuyển tới trang %d", local_page)
+            })
             self:showStories(
-                source.name .. " · " .. listing.title,
-                listing.stories,
+                source.name .. " · " .. result.title,
+                chunked_stories,
                 on_return_callback,
                 {
                     subtitle = string.format(
-                        "Trang web %d/%d · vuốt để xem thêm",
-                        listing.page,
-                        listing.total_pages
+                        "Trang web %d/%d",
+                        local_page,
+                        local_total_pages
                     ),
-                    server_page = listing.page,
-                    server_total_pages = listing.total_pages,
+                    server_page = local_page,
+                    server_total_pages = local_total_pages,
                     on_search = function(return_to_listing)
                         self:showSearchDialog(source, return_to_listing)
                     end,
                     on_genres = function(return_to_listing)
                         self:showGenreMenu(
                             source,
-                            listing.genres,
+                            result.genres,
                             return_to_listing
                         )
                     end,
-                    on_prev_page = listing.page > 1 and function()
+                    on_prev_page = local_page > 1 and function()
                         self:browseSource(
                             source,
                             genre,
-                            listing.page - 1,
+                            local_page - 1,
                             on_return_callback
                         )
                     end or nil,
-                    on_next_page = listing.page < listing.total_pages and function()
+                    on_next_page = local_page < local_total_pages and function()
                         self:browseSource(
                             source,
                             genre,
-                            listing.page + 1,
+                            local_page + 1,
                             on_return_callback
                         )
                     end or nil,
@@ -1259,7 +1268,11 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
     local next_chapter
     for i, c in ipairs(page_data.chapters) do
         if c.url == chapter.url then
-            next_chapter = page_data.chapters[i + 1]
+            if source.reversed_chapters then
+                next_chapter = page_data.chapters[i - 1]
+            else
+                next_chapter = page_data.chapters[i + 1]
+            end
             break
         end
     end
@@ -1267,7 +1280,9 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
     local function on_next_chapter()
         if next_chapter then
             self:openChapter(nil, page_data, source, next_chapter, on_return_callback)
-        elseif page_data.page < page_data.total_pages then
+        elseif source.reversed_chapters and page_data.page > 1 then
+            self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
+        elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
             self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
         else
             UIManager:show(InfoMessage:new{ text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })

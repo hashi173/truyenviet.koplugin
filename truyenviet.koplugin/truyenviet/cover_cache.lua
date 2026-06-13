@@ -7,7 +7,7 @@ local lfs = require("libs/libkoreader-lfs")
 
 local CoverCache = {
     extensions = { "avif", "gif", "jpg", "png", "webp" },
-    max_prefetch = 8,
+    max_prefetch = 10,
 }
 
 function CoverCache:get(story)

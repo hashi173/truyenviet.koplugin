@@ -6,6 +6,7 @@ local Source = {
     name = "TruyenQQ",
     kind = "comic",
     base_url = "https://truyenqqko.com",
+    reversed_chapters = true,
 }
 
 local function requestHeaders()

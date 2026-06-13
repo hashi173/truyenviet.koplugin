@@ -7,6 +7,7 @@ local Source = {
     name = "Dưa Leo Truyện",
     kind = "comic",
     base_url = "https://dualeotruyenbs.com",
+    reversed_chapters = true,
 }
 
 local function requestHeaders(referer)
