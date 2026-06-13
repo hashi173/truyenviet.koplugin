@@ -49,10 +49,17 @@ package.preload["ui/widget/container/inputcontainer"] = function()
 end
 
 local dirty_count = 0
+local close_count = 0
 package.preload["ui/uimanager"] = function()
     return {
         setDirty = function()
             dirty_count = dirty_count + 1
+        end,
+        close = function()
+            close_count = close_count + 1
+        end,
+        nextTick = function(_, callback)
+            callback()
         end,
     }
 end
@@ -139,5 +146,16 @@ assertEqual(0, #view.stories, "Allows empty favorites")
 assertEqual(0, #view.list.items, "Clears final list item")
 assertEqual(1, view.list.show_page, "Keeps valid page when empty")
 assertEqual(3, dirty_count, "Repaints after each removal")
+
+local return_count = 0
+local close_view = {
+    on_return_callback = function()
+        return_count = return_count + 1
+    end,
+}
+assertEqual(true, StoryResults.onClose(close_view), "Closes results")
+assertEqual(true, StoryResults.onClose(close_view), "Ignores duplicate close")
+assertEqual(1, close_count, "Closes widget once")
+assertEqual(1, return_count, "Runs return callback once")
 
 print(string.format("Story results tests passed: %d assertions", tests_run))

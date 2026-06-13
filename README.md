@@ -125,6 +125,10 @@ lua spec/parser_test.lua
 lua spec/chapter_downloader_test.lua
 lua spec/storage_test.lua
 lua spec/story_results_test.lua
+lua spec/reader_test.lua
+lua spec/document_builder_test.lua
+lua spec/image_utils_test.lua
+lua spec/compile_test.lua .
 ```
 
 Các parser specs dùng Busted nằm tại `spec/parser_spec.lua`.
@@ -182,10 +186,14 @@ lua .\spec\parser_test.lua
 Kết quả đúng có dạng:
 
 ```text
-Parser tests passed: 47 assertions
+Parser tests passed: 49 assertions
 Chapter downloader tests passed: 5 assertions
-Storage tests passed: 11 assertions
-Story results tests passed: 14 assertions
+Storage tests passed: 19 assertions
+Story results tests passed: 18 assertions
+Reader tests passed: 10 assertions
+Document builder tests passed: 6 assertions
+Image utils tests passed: 4 assertions
+Lua compile tests passed: 19 files
 ```
 
 Sau đó tạo gói cài:

@@ -12,6 +12,27 @@ local Storage = {
     disabled_sources = nil,
 }
 
+local function copyTable(value)
+    local result = {}
+    for key, item in pairs(type(value) == "table" and value or {}) do
+        result[key] = item
+    end
+    return result
+end
+
+local function persistSetting(self, key, value)
+    local previous = self.settings:readSetting(key)
+    local ok, err = pcall(function()
+        self.settings:saveSetting(key, value)
+        self.settings:flush()
+    end)
+    if not ok then
+        pcall(self.settings.saveSetting, self.settings, key, previous)
+        return nil, tostring(err)
+    end
+    return true
+end
+
 function Storage:initialize()
     if self.settings then
         return
@@ -25,9 +46,11 @@ function Storage:initialize()
         ffiutil.joinPath(DataStorage:getSettingsDir(), "truyenviet.lua")
     )
     self.disabled_sources = {}
-    for source_id, disabled in pairs(
-        self.settings:readSetting("disabled_sources", {}) or {}
-    ) do
+    local disabled_sources = self.settings:readSetting("disabled_sources", {})
+    if type(disabled_sources) ~= "table" then
+        disabled_sources = {}
+    end
+    for source_id, disabled in pairs(disabled_sources) do
         if disabled == true then
             self.disabled_sources[source_id] = true
         end
@@ -63,18 +86,24 @@ end
 
 function Storage:getCustomBaseUrl(source_id)
     self:initialize()
-    return self.settings:readSetting("custom_url_" .. source_id)
+    local url = self.settings:readSetting("custom_url_" .. source_id)
+    return type(url) == "string" and url ~= "" and url or nil
 end
 
 function Storage:setCustomBaseUrl(source_id, url)
     self:initialize()
     if url and url ~= "" then
-        url = url:gsub("/+$", "")
-        self.settings:saveSetting("custom_url_" .. source_id, url)
-    else
-        self.settings:saveSetting("custom_url_" .. source_id, nil)
+        url = url:match("^%s*(.-)%s*$"):gsub("/+$", "")
+        if url == "" then
+            url = nil
+        end
     end
-    self.settings:flush()
+    return persistSetting(self, "custom_url_" .. source_id, url)
+end
+
+function Storage:setFastMode(enabled)
+    self:initialize()
+    return persistSetting(self, "fast_mode", enabled == true)
 end
 
 function Storage:isSourceEnabled(source_id)
@@ -137,7 +166,8 @@ end
 
 function Storage:getFavorites()
     self:initialize()
-    return self.settings:readSetting("favorites", {})
+    local favorites = self.settings:readSetting("favorites", {})
+    return type(favorites) == "table" and favorites or {}
 end
 
 function Storage:isFavorite(story)
@@ -156,29 +186,33 @@ local function favoriteRecord(story)
 end
 
 function Storage:addFavorite(story)
-    local favorites = self:getFavorites()
+    local favorites = copyTable(self:getFavorites())
     favorites[story.source_id .. "|" .. story.url] = favoriteRecord(story)
-    self.settings:saveSetting("favorites", favorites)
-    self.settings:flush()
+    return persistSetting(self, "favorites", favorites)
 end
 
 function Storage:updateFavorite(story)
     if self:isFavorite(story) then
-        self:addFavorite(story)
+        return self:addFavorite(story)
     end
+    return true
 end
 
 function Storage:removeFavorite(story)
-    local favorites = self:getFavorites()
+    local favorites = copyTable(self:getFavorites())
     favorites[story.source_id .. "|" .. story.url] = nil
-    self.settings:saveSetting("favorites", favorites)
-    self.settings:flush()
+    return persistSetting(self, "favorites", favorites)
 end
 
 function Storage:listFavorites()
     local result = {}
     for _, story in pairs(self:getFavorites()) do
-        table.insert(result, story)
+        if type(story) == "table"
+                and type(story.title) == "string"
+                and type(story.url) == "string"
+                and type(story.source_id) == "string" then
+            table.insert(result, story)
+        end
     end
     table.sort(result, function(left, right)
         return left.title:lower() < right.title:lower()
@@ -188,11 +222,29 @@ end
 
 function Storage:getHistory()
     self:initialize()
-    return self.settings:readSetting("history", {})
+    local history = self.settings:readSetting("history", {})
+    if type(history) ~= "table" then
+        return {}
+    end
+
+    local valid_history = {}
+    for _, item in ipairs(history) do
+        if type(item) == "table"
+                and type(item.story) == "table"
+                and type(item.story.source_id) == "string"
+                and type(item.story.title) == "string"
+                and type(item.story.url) == "string"
+                and type(item.chapter) == "table"
+                and type(item.chapter.title) == "string"
+                and type(item.chapter.url) == "string" then
+            table.insert(valid_history, item)
+        end
+    end
+    return valid_history
 end
 
 function Storage:saveHistory(story, chapter)
-    local history = self:getHistory()
+    local history = copyTable(self:getHistory())
     local existing_idx
     for i, item in ipairs(history) do
         if item.story.source_id == story.source_id and item.story.url == story.url then
@@ -218,12 +270,11 @@ function Storage:saveHistory(story, chapter)
         table.remove(history)
     end
     
-    self.settings:saveSetting("history", history)
-    self.settings:flush()
+    return persistSetting(self, "history", history)
 end
 
 function Storage:removeHistory(story)
-    local history = self:getHistory()
+    local history = copyTable(self:getHistory())
     local existing_idx
     for i, item in ipairs(history) do
         if item.story.source_id == story.source_id and item.story.url == story.url then
@@ -233,9 +284,9 @@ function Storage:removeHistory(story)
     end
     if existing_idx then
         table.remove(history, existing_idx)
-        self.settings:saveSetting("history", history)
-        self.settings:flush()
+        return persistSetting(self, "history", history)
     end
+    return true
 end
 
 return Storage

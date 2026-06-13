@@ -1,4 +1,5 @@
 local Http = require("truyenviet/http_client")
+local ImageUtils = require("truyenviet/image_utils")
 local Storage = require("truyenviet/storage")
 local Util = require("truyenviet/helpers")
 local ffiutil = require("ffi/util")
@@ -8,37 +9,6 @@ local CoverCache = {
     extensions = { "avif", "gif", "jpg", "png", "webp" },
     max_prefetch = 8,
 }
-
-local CONTENT_TYPE_EXTENSIONS = {
-    ["image/avif"] = "avif",
-    ["image/gif"] = "gif",
-    ["image/jpeg"] = "jpg",
-    ["image/jpg"] = "jpg",
-    ["image/png"] = "png",
-    ["image/webp"] = "webp",
-}
-
-local function detectExtension(headers, content, url)
-    local content_type = headers and headers["content-type"]
-    if content_type then
-        content_type = content_type:match("^%s*([^;]+)")
-        if CONTENT_TYPE_EXTENSIONS[content_type] then
-            return CONTENT_TYPE_EXTENSIONS[content_type]
-        end
-    end
-    if content:sub(1, 3) == "\255\216\255" then
-        return "jpg"
-    elseif content:sub(1, 8) == "\137PNG\r\n\26\n" then
-        return "png"
-    elseif content:sub(1, 4) == "RIFF" and content:sub(9, 12) == "WEBP" then
-        return "webp"
-    elseif content:sub(1, 6) == "GIF87a" or content:sub(1, 6) == "GIF89a" then
-        return "gif"
-    end
-    return tostring(url):match("%.([%a%d]+)[%?#]")
-        or tostring(url):match("%.([%a%d]+)$")
-        or "jpg"
-end
 
 function CoverCache:get(story)
     if not story.cover_url then
@@ -74,12 +44,15 @@ function CoverCache:download(story, source)
     if not content then
         return nil, err
     end
-    local content_type = response_headers and response_headers["content-type"] or ""
-    if not content_type:find("^image/") and content:sub(1, 4) == "<!DO" then
-        return nil, "Máy chủ ảnh trả về HTML"
+    if not ImageUtils:isSupported(response_headers, content) then
+        return nil, "Máy chủ không trả về ảnh bìa hợp lệ"
     end
 
-    local extension = detectExtension(response_headers, content, story.cover_url)
+    local extension = ImageUtils:detectExtension(
+        response_headers,
+        content,
+        story.cover_url
+    )
     local path = ffiutil.joinPath(
         Storage:getCoverCacheDir(),
         Util.stableHash(story.cover_url) .. "." .. extension

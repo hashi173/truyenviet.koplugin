@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.4
+
+- Sửa vòng đời widget để Back, tìm kiếm, lịch sử và phân trang không tạo nhiều màn hình chồng nhau.
+- Sửa luồng mở/thoát Reader và chuyển chương để không văng về FileManager.
+- Giữ bản chương cũ nếu tải lại thất bại; chỉ thay file sau khi dựng bản mới thành công.
+- Chặn ảnh bìa lỗi, kích thước danh sách không hợp lệ và exception khi ghi cài đặt.
+- Khôi phục đúng tên miền mặc định sau khi xóa tên miền tùy chỉnh.
+
 ## 0.3.0
 
 - Xóa truyện khỏi tủ sẽ cập nhật danh sách và phân trang ngay, không cần thoát ra vào lại.

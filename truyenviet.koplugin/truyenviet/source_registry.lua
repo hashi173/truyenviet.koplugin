@@ -10,17 +10,22 @@ local BUILTIN_SOURCES = {
 }
 
 local SOURCES_BY_ID = {}
+local DEFAULT_BASE_URLS = {}
 for _, source in ipairs(BUILTIN_SOURCES) do
     SOURCES_BY_ID[source.id] = source
+    DEFAULT_BASE_URLS[source.id] = source.base_url
+end
+
+local function applyBaseUrl(source)
+    source.base_url = Storage:getCustomBaseUrl(source.id)
+        or DEFAULT_BASE_URLS[source.id]
+    return source
 end
 
 function SourceRegistry:get(source_id)
     local source = SOURCES_BY_ID[source_id]
     if source then
-        local custom_url = Storage:getCustomBaseUrl(source.id)
-        if custom_url then
-            source.base_url = custom_url
-        end
+        applyBaseUrl(source)
     end
     return source
 end
@@ -28,11 +33,7 @@ end
 function SourceRegistry:listAll()
     local result = {}
     for _, source in ipairs(BUILTIN_SOURCES) do
-        local custom_url = Storage:getCustomBaseUrl(source.id)
-        if custom_url then
-            source.base_url = custom_url
-        end
-        table.insert(result, source)
+        table.insert(result, applyBaseUrl(source))
     end
     return result
 end
@@ -41,11 +42,7 @@ function SourceRegistry:listEnabled()
     local result = {}
     for _, source in ipairs(BUILTIN_SOURCES) do
         if Storage:isSourceEnabled(source.id) then
-            local custom_url = Storage:getCustomBaseUrl(source.id)
-            if custom_url then
-                source.base_url = custom_url
-            end
-            table.insert(result, source)
+            table.insert(result, applyBaseUrl(source))
         end
     end
     return result

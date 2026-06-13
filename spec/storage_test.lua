@@ -120,4 +120,32 @@ assertEqual(nil, failed, "Reports write failure")
 assertEqual(true, type(err) == "string", "Returns write error")
 assertEqual(false, Storage:isSourceEnabled("dualeo"), "Rolls back failed write")
 
+local story = {
+    source_id = "truyenfull",
+    title = "Demo",
+    url = "https://example.test/demo",
+}
+failed, err = Storage:addFavorite(story)
+assertEqual(nil, failed, "Favorite write failure is contained")
+assertEqual(false, Storage:isFavorite(story), "Failed favorite write is rolled back")
+
+fail_flush = false
+assertEqual(
+    true,
+    Storage:setCustomBaseUrl("truyenfull", " https://mirror.example/ "),
+    "Saves custom base URL"
+)
+assertEqual(
+    "https://mirror.example",
+    Storage:getCustomBaseUrl("truyenfull"),
+    "Normalizes custom base URL"
+)
+assertEqual(true, Storage:setFastMode(true), "Saves fast mode")
+assertEqual(true, settings.data.fast_mode, "Persists fast mode")
+
+settings.data.custom_url_truyenqq = 123
+assertEqual(nil, Storage:getCustomBaseUrl("truyenqq"), "Ignores invalid custom URL")
+settings.data.history = { "broken", { story = {}, chapter = {} } }
+assertEqual(0, #Storage:getHistory(), "Ignores invalid history records")
+
 print(string.format("Storage tests passed: %d assertions", tests_run))

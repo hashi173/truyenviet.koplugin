@@ -5,13 +5,23 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 
 local Reader = {
     active = false,
+    returning = false,
     switching_document = false,
     on_return_callback = nil,
     on_next_chapter_callback = nil,
 }
 
+function Reader:resetSession()
+    self.active = false
+    self.returning = false
+    self.switching_document = false
+    self.on_return_callback = nil
+    self.on_next_chapter_callback = nil
+end
+
 function Reader:show(path, on_return_callback, on_next_chapter_callback)
     self.active = true
+    self.returning = false
     self.on_return_callback = on_return_callback
     self.on_next_chapter_callback = on_next_chapter_callback
 
@@ -37,7 +47,7 @@ function Reader:initializeFromReaderUI(ui)
         local listener = WidgetContainer:new({})
         listener.onCloseWidget = function()
             if not self.switching_document then
-                self.active = false
+                self:resetSession()
             end
         end
         table.insert(ui, 2, listener)
@@ -58,30 +68,32 @@ function Reader:addToMainMenu(menu_items)
             sorting_hint = "main",
             callback = function()
                 local cb = self.on_next_chapter_callback
-                self:returnToPlugin()
-                UIManager:nextTick(cb)
+                self:returnToPlugin(cb)
             end,
         }
     end
 end
 
-function Reader:returnToPlugin()
-    local callback = self.on_return_callback
+function Reader:returnToPlugin(callback_override)
+    if self.returning or not self.active then
+        return
+    end
+    self.returning = true
+
+    local callback = callback_override or self.on_return_callback
     self.active = false
     self.on_return_callback = nil
+    self.on_next_chapter_callback = nil
 
     UIManager:nextTick(function()
         local FileManager = require("apps/filemanager/filemanager")
         if ReaderUI.instance then
             ReaderUI.instance:onClose()
         end
-        if FileManager.instance then
-            FileManager.instance:reinit()
-        else
-            FileManager:showFiles()
-        end
+        FileManager:showFiles()
+        self.returning = false
         if callback then
-            callback()
+            UIManager:nextTick(callback)
         end
     end)
 end

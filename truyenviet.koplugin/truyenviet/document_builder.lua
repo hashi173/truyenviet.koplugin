@@ -1,46 +1,13 @@
 local Archiver = require("ffi/archiver")
 local Http = require("truyenviet/http_client")
+local ImageUtils = require("truyenviet/image_utils")
 local Storage = require("truyenviet/storage")
 local Util = require("truyenviet/helpers")
 local lfs = require("libs/libkoreader-lfs")
 
 local DocumentBuilder = {}
 
-local IMAGE_EXTENSIONS = {
-    ["image/avif"] = "avif",
-    ["image/gif"] = "gif",
-    ["image/jpeg"] = "jpg",
-    ["image/jpg"] = "jpg",
-    ["image/png"] = "png",
-    ["image/webp"] = "webp",
-}
-
-local function detectImageExtension(headers, content, url)
-    local content_type = headers and headers["content-type"]
-    if content_type then
-        content_type = content_type:match("^%s*([^;]+)")
-        if IMAGE_EXTENSIONS[content_type] then
-            return IMAGE_EXTENSIONS[content_type]
-        end
-    end
-
-    if content:sub(1, 3) == "\255\216\255" then
-        return "jpg"
-    elseif content:sub(1, 8) == "\137PNG\r\n\26\n" then
-        return "png"
-    elseif content:sub(1, 4) == "RIFF" and content:sub(9, 12) == "WEBP" then
-        return "webp"
-    elseif content:sub(1, 6) == "GIF87a" or content:sub(1, 6) == "GIF89a" then
-        return "gif"
-    end
-
-    return url:match("%.([%a%d]+)[%?#]") or url:match("%.([%a%d]+)$") or "jpg"
-end
-
 local function replaceFile(temp_path, final_path)
-    if lfs.attributes(final_path, "mode") == "file" then
-        os.remove(final_path)
-    end
     local ok, err = os.rename(temp_path, final_path)
     if not ok then
         os.remove(temp_path)
@@ -140,8 +107,19 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                     tostring(headers_or_error)
                 )
             end
+            if not ImageUtils:isSupported(headers_or_error, content) then
+                return nil, string.format(
+                    "Ảnh %d/%d không phải định dạng ảnh hợp lệ",
+                    index,
+                    #payload.images
+                )
+            end
 
-            local extension = detectImageExtension(headers_or_error, content, url)
+            local extension = ImageUtils:detectExtension(
+                headers_or_error,
+                content,
+                url
+            )
             local entry_name = string.format("%04d.%s", index, extension)
             if not archive:addFileFromMemory(entry_name, content, os.time()) then
                 return nil, archive.err or ("Không thể ghi " .. entry_name)
@@ -170,10 +148,12 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
     return replaceFile(temp_path, path)
 end
 
-function DocumentBuilder:build(source, story, chapter, payload)
-    local existing = self:getExistingPath(source, story, chapter)
-    if existing then
-        return existing
+function DocumentBuilder:build(source, story, chapter, payload, force)
+    if not force then
+        local existing = self:getExistingPath(source, story, chapter)
+        if existing then
+            return existing
+        end
     end
     if source.kind == "comic" then
         return self:buildComic(source, story, chapter, payload)

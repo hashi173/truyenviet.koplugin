@@ -3,11 +3,12 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 
 local Browser = require("truyenviet/browser")
 local Reader = require("truyenviet/reader")
+local Version = require("truyenviet/version")
 
 local TruyenViet = WidgetContainer:extend{
     name = "truyenviet",
     is_doc_only = false,
-    VERSION = "1.0.3",
+    VERSION = Version,
 }
 
 function TruyenViet:init()

@@ -8,7 +8,6 @@ local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
-local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
@@ -38,24 +37,38 @@ function StoryItem:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = self.width, h = self.height }
     local padding = Size.padding.default
     local border = Size.border.thin
-    local cover_width = math.floor(self.height * 0.68)
-    local cover_height = self.height - (padding + border) * 2
-    local text_width = self.width - cover_width - padding * 4 - border * 2
-    local source_height = Screen:scaleBySize(24)
+    local cover_height = math.max(self.height - (padding + border) * 2, 1)
+    local cover_width = math.max(math.floor(cover_height * 0.68), 1)
+    local text_width = math.max(
+        self.width - cover_width - padding * 4 - border * 2,
+        1
+    )
+    local source_height = math.min(
+        Screen:scaleBySize(24),
+        math.max(self.height - padding * 3, 1)
+    )
 
     local cover_widget
     if self.story.cover_path then
-        cover_widget = ImageWidget:new{
-            file = self.story.cover_path,
-            width = cover_width,
-            height = cover_height,
-            scale_factor = 0,
-        }
-    else
+        local ok
+        ok, cover_widget = pcall(function()
+            return ImageWidget:new{
+                file = self.story.cover_path,
+                width = cover_width,
+                height = cover_height,
+                scale_factor = 0,
+            }
+        end)
+        if not ok then
+            cover_widget = nil
+            os.remove(self.story.cover_path)
+            self.story.cover_path = nil
+        end
+    end
+    if not cover_widget then
         cover_widget = FrameContainer:new{
             width = cover_width,
             height = cover_height,
-            background = Blitbuffer.COLOR_LIGHT_GRAY,
             CenterContainer:new{
                 dimen = Geom:new{ w = cover_width, h = cover_height },
                 TextWidget:new{
@@ -80,7 +93,7 @@ function StoryItem:init()
             face = Font:getFace("smallinfofont", 22),
             bold = true,
             width = text_width,
-            height = self.height - source_height - padding * 3,
+            height = math.max(self.height - source_height - padding * 3, 1),
         },
         VerticalSpan:new{ width = padding },
         self.source_widget,
@@ -179,7 +192,6 @@ function StoryResults:init()
         with_bottom_line = true,
     }
 
-    local item_height = Screen:scaleBySize(116)
     if self.server_page then
         local genre_width = math.floor(self.width * 2 / 5)
         local control_width = math.floor((self.width - genre_width) / 3)
@@ -259,6 +271,11 @@ function StoryResults:init()
     local list_height = self.height
         - self.title_bar:getSize().h
         - self.footer:getSize().h
+    list_height = math.max(list_height, 1)
+    local item_height = math.max(
+        math.min(Screen:scaleBySize(116), list_height),
+        1
+    )
 
     local items = {}
     for _, story in ipairs(self.stories or {}) do
@@ -389,9 +406,15 @@ function StoryResults:onPrevPage()
 end
 
 function StoryResults:onClose()
+    if self._truyenviet_closed then
+        return true
+    end
+    self._truyenviet_closed = true
+    local callback = self.on_return_callback
+    self.on_return_callback = nil
     UIManager:close(self)
-    if self.on_return_callback then
-        self.on_return_callback()
+    if callback then
+        UIManager:nextTick(callback)
     end
     return true
 end
