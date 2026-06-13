@@ -58,6 +58,7 @@ local function showError(message, on_close)
         .. tostring(message or "Đã xảy ra lỗi không xác định")
     if not on_close then
         UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
             text = text,
             icon = "notice-warning",
         })
@@ -65,7 +66,8 @@ local function showError(message, on_close)
     end
 
     UIManager:show(ConfirmBox:new{
-        text = text,
+            title = "Truyện Việt",
+            text = text,
         icon = "notice-warning",
         cancel_text = "Đóng",
         no_ok_button = true,
@@ -87,7 +89,8 @@ end
 
 local function withLoading(message, callback)
     local loading = InfoMessage:new{
-        text = message,
+            title = "Truyện Việt",
+            text = message,
         dismissable = false,
     }
     UIManager:show(loading)
@@ -132,7 +135,8 @@ local function toggleFavorite(story, refresh_callback)
             local dir = Storage:getStoryDir(source, story)
             if lfs.attributes(dir, "mode") == "directory" then
                 UIManager:show(ConfirmBox:new{
-                    text = "Đã xóa khỏi tủ truyện.\nBạn có muốn xóa luôn các bản tải của truyện này khỏi máy không?",
+            title = "Truyện Việt",
+            text = "Đã xóa khỏi tủ truyện.\nBạn có muốn xóa luôn các bản tải của truyện này khỏi máy không?",
                     ok_text = "Xóa bản tải",
                     ok_callback = function()
                         for file in lfs.dir(dir) do
@@ -141,15 +145,21 @@ local function toggleFavorite(story, refresh_callback)
                             end
                         end
                         os.remove(dir)
-                        UIManager:show(InfoMessage:new{ text = "Đã xóa các chương đã tải." })
+                        UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã xóa các chương đã tải." })
                     end,
                     cancel_text = "Giữ lại",
                 })
             else
-                UIManager:show(InfoMessage:new{ text = "Đã xóa khỏi tủ truyện." })
+                UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã xóa khỏi tủ truyện." })
             end
         else
-            UIManager:show(InfoMessage:new{ text = "Đã xóa khỏi tủ truyện." })
+            UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã xóa khỏi tủ truyện." })
         end
         if refresh_callback then refresh_callback(false) end
         return false
@@ -159,7 +169,9 @@ local function toggleFavorite(story, refresh_callback)
             showError(add_err)
             return nil
         end
-        UIManager:show(InfoMessage:new{ text = "Đã thêm vào tủ truyện." })
+        UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã thêm vào tủ truyện." })
         if refresh_callback then refresh_callback(true) end
         return true
     end
@@ -267,7 +279,8 @@ function Browser:showRoot()
             callback = function()
                 self:showSearchDialog(nil, function()
                     self:showRoot()
-                end)
+                end, view)
+                return true
             end,
         },
     }
@@ -354,7 +367,9 @@ function Browser:showRoot()
             text = "Xóa bộ nhớ đệm ảnh bìa",
             callback = function()
                 if Storage:clearCoverCacheDir() then
-                    UIManager:show(InfoMessage:new{ text = "Đã xóa bộ nhớ đệm ảnh bìa." })
+                    UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã xóa bộ nhớ đệm ảnh bìa." })
                 else
                     showError("Không thể xóa bộ nhớ đệm.")
                 end
@@ -372,7 +387,8 @@ function Browser:showRoot()
                     end)
                     if not res then
                         UIManager:show(ConfirmBox:new{
-                            text = "Lỗi kết nối: " .. tostring(err),
+            title = "Truyện Việt",
+            text = "Lỗi kết nối: " .. tostring(err),
                             ok_text = "Đóng",
                         })
                         return
@@ -382,14 +398,16 @@ function Browser:showRoot()
                     
                     if latest_version ~= "" and latest_version ~= current_version then
                         UIManager:show(ConfirmBox:new{
-                            text = string.format("Phiên bản mới: %s\nPhiên bản hiện tại: %s\n\nCó tải về và cài đặt cập nhật không?", latest_version, current_version),
+            title = "Truyện Việt",
+            text = string.format("Phiên bản mới: %s\nPhiên bản hiện tại: %s\n\nCó tải về và cài đặt cập nhật không?", latest_version, current_version),
                             ok_text = "Cập nhật",
                             ok_callback = function()
                                 UIManager:nextTick(function()
                                     local asset_url = res:match('"browser_download_url"%s*:%s*"([^"]+%.zip)"')
                                     if not asset_url then
                                         UIManager:show(ConfirmBox:new{
-                                            text = "Không tìm thấy file cài đặt.",
+            title = "Truyện Việt",
+            text = "Không tìm thấy file cài đặt.",
                                             ok_text = "Đóng",
                                         })
                                         return
@@ -437,12 +455,14 @@ function Browser:showRoot()
 
                                     if dl_ok then
                                         UIManager:show(ConfirmBox:new{
-                                            text = "Cập nhật thành công! Vui lòng khởi động lại KOReader.",
+            title = "Truyện Việt",
+            text = "Cập nhật thành công! Vui lòng khởi động lại KOReader.",
                                             ok_text = "Đóng",
                                         })
                                     else
                                         UIManager:show(ConfirmBox:new{
-                                            text = "Cập nhật thất bại: " .. tostring(dl_err),
+            title = "Truyện Việt",
+            text = "Cập nhật thất bại: " .. tostring(dl_err),
                                             ok_text = "Đóng",
                                         })
                                     end
@@ -452,7 +472,8 @@ function Browser:showRoot()
                         })
                     else
                         UIManager:show(ConfirmBox:new{
-                            text = "Bạn đang dùng phiên bản mới nhất (" .. current_version .. ")",
+            title = "Truyện Việt",
+            text = "Bạn đang dùng phiên bản mới nhất (" .. current_version .. ")",
                             ok_text = "Đóng",
                         })
                     end
@@ -480,7 +501,7 @@ function Browser:showRoot()
             callback = function()
                 UIManager:show(TextViewer:new{
                     title = "Truyện Việt",
-                    text = table.concat({
+            text = table.concat({
                         "Đọc truyện trực tuyến trong KOReader.",
                         "",
                         "Nguồn truyện chữ: https://truyenfull.today/",
@@ -496,7 +517,7 @@ function Browser:showRoot()
     view = showView("Truyện Việt", items)
 end
 
-function Browser:showSearchDialog(source, on_return_callback)
+function Browser:showSearchDialog(source, on_return_callback, parent_view)
     local dialog
     dialog = InputDialog:new{
         title = source and ("Tìm trên " .. source.name) or "Tìm trên tất cả nguồn",
@@ -506,7 +527,11 @@ function Browser:showSearchDialog(source, on_return_callback)
                 {
                     text = "Quay lại",
                     callback = function()
-                        closeAndRun(dialog, on_return_callback)
+                        closeAndRun(dialog, function()
+                            if not parent_view and on_return_callback then 
+                                on_return_callback() 
+                            end
+                        end)
                     end,
                 },
                 {
@@ -518,7 +543,7 @@ function Browser:showSearchDialog(source, on_return_callback)
                             return
                         end
                         closeAndRun(dialog, function()
-                            self:search(source, query, on_return_callback)
+                            self:search(source, query, on_return_callback, parent_view)
                         end)
                     end,
                 },
@@ -529,7 +554,7 @@ function Browser:showSearchDialog(source, on_return_callback)
     dialog:onShowKeyboard()
 end
 
-function Browser:search(source, query, on_return_callback)
+function Browser:search(source, query, on_return_callback, parent_view)
     runOnline(function()
         local sources = source and { source } or SourceRegistry:listEnabled()
         if #sources == 0 then
@@ -550,7 +575,7 @@ function Browser:search(source, query, on_return_callback)
         )
         if not search_result then
             showError(err, function()
-                self:showSearchDialog(source, on_return_callback)
+                self:showSearchDialog(source, on_return_callback, parent_view)
             end)
             return
         end
@@ -561,17 +586,18 @@ function Browser:search(source, query, on_return_callback)
                 message = message .. "\n\n" .. table.concat(search_result.errors, "\n")
             end
             showError(message, function()
-                self:showSearchDialog(source, on_return_callback)
+                self:showSearchDialog(source, on_return_callback, parent_view)
             end)
             return
         end
 
+        if parent_view and type(parent_view.onClose) == "function" then
+            UIManager:close(parent_view)
+        end
         self:showStories(
             source and (source.name .. ": " .. query) or query,
             stories,
-            function()
-                self:showSearchDialog(source, on_return_callback)
-            end,
+            on_return_callback,
             {
                 subtitle = #search_result.errors > 0
                     and string.format(
@@ -669,8 +695,8 @@ function Browser:browseSource(source, genre, local_page, on_return_callback)
                     ),
                     server_page = local_page,
                     server_total_pages = local_total_pages,
-                    on_search = function(return_to_listing)
-                        self:showSearchDialog(source, return_to_listing)
+                    on_search = function(return_to_listing, parent_view)
+                        self:showSearchDialog(source, return_to_listing, parent_view)
                     end,
                     on_genres = function(return_to_listing)
                         self:showGenreMenu(
@@ -750,11 +776,9 @@ function Browser:showStories(title, stories, on_return_callback, options)
         stories = stories,
         on_return_callback = on_return_callback,
         search_callback = options.on_search and function()
-            closeAndRun(view, function()
-                options.on_search(function()
-                    self:showStories(title, stories, on_return_callback, options)
-                end)
-            end)
+            options.on_search(function()
+                self:showStories(title, stories, on_return_callback, options)
+            end, view)
         end or nil,
         genres_callback = options.on_genres and function()
             closeAndRun(view, function()
@@ -861,7 +885,8 @@ function Browser:showHistory(on_return_callback)
                     story.source_id .. "|" .. story.url
                 ]
                 UIManager:show(ConfirmBox:new{
-                    text = "Đọc tiếp: " .. item.chapter.title .. "?",
+            title = "Truyện Việt",
+            text = "Đọc tiếp: " .. item.chapter.title .. "?",
                     ok_text = "Đọc tiếp",
                     cancel_text = "Mục lục",
                     ok_callback = function()
@@ -882,7 +907,8 @@ function Browser:showHistory(on_return_callback)
             end,
             on_story_hold = function(story, view)
                 UIManager:show(ConfirmBox:new{
-                    text = "Xóa khỏi lịch sử đọc?",
+            title = "Truyện Việt",
+            text = "Xóa khỏi lịch sử đọc?",
                     ok_text = "Xóa",
                     ok_callback = function()
                         Storage:removeHistory(story)
@@ -1095,7 +1121,9 @@ function Browser:downloadChapters(
 
         if not completed then
             ChapterDownloader:cleanupPartials(source, story, chapters)
-            UIManager:show(InfoMessage:new{ text = "Đã hủy tải các chương." })
+            UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã hủy tải các chương." })
             return
         end
         if not result then
@@ -1119,7 +1147,9 @@ function Browser:downloadChapters(
                 .. string.format("\nLỗi %d chương:\n", #result.errors)
                 .. table.concat(shown, "\n")
         end
-        UIManager:show(InfoMessage:new{ text = message })
+        UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = message })
     end)
 end
 
@@ -1133,6 +1163,7 @@ function Browser:confirmDownloadChapters(view, page_data, source)
     local already_downloaded = #page_data.chapters - #pending
     if #pending == 0 then
         UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
             text = "Các chương ở trang mục lục này đã được tải.",
         })
         return
@@ -1147,7 +1178,8 @@ function Browser:confirmDownloadChapters(view, page_data, source)
             .. "\n\nTruyện tranh có thể tốn nhiều thời gian và dung lượng lưu trữ."
     end
     UIManager:show(ConfirmBox:new{
-        text = warning,
+            title = "Truyện Việt",
+            text = warning,
         ok_text = "Tải các chương",
         ok_callback = function()
             UIManager:scheduleIn(0, function()
@@ -1285,7 +1317,9 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
         elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
             self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
         else
-            UIManager:show(InfoMessage:new{ text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
+            UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
         end
     end
 
@@ -1328,7 +1362,9 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
         if not completed then
             os.remove(Storage:getChapterPath(source, story, chapter) .. ".part")
             if view then
-                UIManager:show(InfoMessage:new{ text = "Đã hủy tải chương." })
+                UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã hủy tải chương." })
             else
                 showError("Đã hủy tải chương.", function()
                     self:showChapterList(page_data, source, on_return_callback)
@@ -1402,7 +1438,9 @@ function Browser:showChapterActions(view, page_data, source, chapter, on_return_
                     closeAndRun(dialog, function()
                         Storage:removeDownload(source, story, chapter)
                         view:updateItems()
-                        UIManager:show(InfoMessage:new{ text = "Đã xóa bản tải." })
+                        UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã xóa bản tải." })
                     end)
                 end,
             },

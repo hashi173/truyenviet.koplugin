@@ -40,7 +40,7 @@ function CoverCache:download(story, source)
     }
     headers["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
 
-    local content, err, response_headers = Http:get(story.cover_url, headers)
+    local content, err, response_headers = Http:requestAsync("GET", story.cover_url, nil, headers)
     if not content then
         return nil, err
     end
@@ -81,19 +81,46 @@ function CoverCache:prefetch(stories, registry)
     local fast_mode = Storage.settings and Storage.settings:readSetting("fast_mode", false)
     if fast_mode then return stories end
     
-    local limit = math.min(#stories, self.max_prefetch)
-    for index = 1, limit do
-        local story = stories[index]
-        local source = registry:get(story.source_id)
-        if source then
-            story.cover_path = self:download(story, source)
+    local limit = #stories
+    
+    local ok, copas = pcall(require, "copas")
+    if ok and copas and copas.addthread then
+        local active_downloads = 0
+        local max_concurrent = 4
+        
+        for index = 1, limit do
+            while active_downloads >= max_concurrent do
+                copas.step()
+            end
+            
+            active_downloads = active_downloads + 1
+            copas.addthread(function()
+                local story = stories[index]
+                local source = registry:get(story.source_id)
+                if source then
+                    story.cover_path = self:download(story, source)
+                end
+                active_downloads = active_downloads - 1
+            end)
         end
-        -- Chạy thu gom rác sau mỗi 5 ảnh để tránh tràn bộ nhớ (Out of Memory)
-        -- trên các máy đọc sách cũ có RAM hạn chế.
-        if index % 5 == 0 then
-            collectgarbage("collect")
+        
+        while active_downloads > 0 do
+            copas.step()
+        end
+    else
+        for index = 1, #stories do
+            local story = stories[index]
+            local source = registry:get(story.source_id)
+            if source then
+                story.cover_path = self:download(story, source)
+            end
+            if index % 5 == 0 then
+                collectgarbage("collect")
+            end
         end
     end
+    
+    collectgarbage("collect")
     return stories
 end
 
