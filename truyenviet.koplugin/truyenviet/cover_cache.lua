@@ -6,7 +6,7 @@ local lfs = require("libs/libkoreader-lfs")
 
 local CoverCache = {
     extensions = { "avif", "gif", "jpg", "png", "webp" },
-    max_prefetch = 50,
+    max_prefetch = 8,
 }
 
 local CONTENT_TYPE_EXTENSIONS = {
@@ -105,6 +105,9 @@ function CoverCache:download(story, source)
 end
 
 function CoverCache:prefetch(stories, registry)
+    local fast_mode = Storage.settings and Storage.settings:readSetting("fast_mode", false)
+    if fast_mode then return stories end
+    
     local limit = math.min(#stories, self.max_prefetch)
     for index = 1, limit do
         local story = stories[index]

@@ -388,6 +388,18 @@ function Browser:showRoot()
             end,
         })
     table.insert(items, {
+            text = Storage.settings:readSetting("fast_mode", false) 
+                and "Chế độ tải ảnh bìa: Tắt (Duyệt rất nhanh)" 
+                or "Chế độ tải ảnh bìa: Bật (Tải chậm hơn)",
+            callback = function()
+                local is_fast = Storage.settings:readSetting("fast_mode", false)
+                Storage.settings:saveSetting("fast_mode", not is_fast)
+                Storage.settings:flush()
+                UIManager:close(view)
+                self:showRoot()
+            end,
+        })
+    table.insert(items, {
             text = "Giới thiệu",
             callback = function()
                 UIManager:show(TextViewer:new{
