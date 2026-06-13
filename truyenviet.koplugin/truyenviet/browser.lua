@@ -329,8 +329,11 @@ function Browser:showRoot()
                         return response
                     end)
                     if not res then
-                        showError("Lỗi kết nối: " .. tostring(err))
-                        self:showRoot()
+                        UIManager:show(ConfirmBox:new{
+                            text = "Lỗi kết nối: " .. tostring(err),
+                            ok_text = "Đóng",
+                            ok_callback = function() self:showRoot() end,
+                        })
                         return
                     end
                     local current_version = "1.0.1"
@@ -343,8 +346,11 @@ function Browser:showRoot()
                             ok_callback = function()
                                 local asset_url = res:match('"browser_download_url"%s*:%s*"([^"]+%.zip)"')
                                 if not asset_url then
-                                    showError("Không tìm thấy file cài đặt.")
-                                    self:showRoot()
+                                    UIManager:show(ConfirmBox:new{
+                                        text = "Không tìm thấy file cài đặt.",
+                                        ok_text = "Đóng",
+                                        ok_callback = function() self:showRoot() end,
+                                    })
                                     return
                                 end
                                 
@@ -369,11 +375,18 @@ function Browser:showRoot()
                                 end)
                                 
                                 if dl_ok then
-                                    UIManager:show(InfoMessage:new{ text = "Cập nhật thành công! Vui lòng khởi động lại KOReader." })
+                                    UIManager:show(ConfirmBox:new{
+                                        text = "Cập nhật thành công! Vui lòng khởi động lại KOReader.",
+                                        ok_text = "Đóng",
+                                        ok_callback = function() self:showRoot() end,
+                                    })
                                 else
-                                    showError("Cập nhật thất bại: " .. tostring(dl_err))
+                                    UIManager:show(ConfirmBox:new{
+                                        text = "Cập nhật thất bại: " .. tostring(dl_err),
+                                        ok_text = "Đóng",
+                                        ok_callback = function() self:showRoot() end,
+                                    })
                                 end
-                                self:showRoot()
                             end,
                             cancel_text = "Để sau",
                             cancel_callback = function()
@@ -381,8 +394,13 @@ function Browser:showRoot()
                             end,
                         })
                     else
-                        UIManager:show(InfoMessage:new{ text = "Bạn đang dùng phiên bản mới nhất (" .. current_version .. ")" })
-                        self:showRoot()
+                        UIManager:show(ConfirmBox:new{
+                            text = "Bạn đang dùng phiên bản mới nhất (" .. current_version .. ")",
+                            ok_text = "Đóng",
+                            ok_callback = function()
+                                self:showRoot()
+                            end,
+                        })
                     end
                 end)
             end,
