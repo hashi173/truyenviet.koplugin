@@ -7,7 +7,7 @@ local Reader = require("truyenviet/reader")
 local TruyenViet = WidgetContainer:extend{
     name = "truyenviet",
     is_doc_only = false,
-    VERSION = "1.0.1",
+    VERSION = "1.0.2",
 }
 
 function TruyenViet:init()

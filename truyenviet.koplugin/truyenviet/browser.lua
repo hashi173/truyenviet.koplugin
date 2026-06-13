@@ -336,7 +336,7 @@ function Browser:showRoot()
                         })
                         return
                     end
-                    local current_version = "1.0.1"
+                    local current_version = "1.0.2"
                     local latest_version = res:match('"tag_name"%s*:%s*"v?([^"]+)"') or ""
                     
                     if latest_version ~= "" and latest_version ~= current_version then
