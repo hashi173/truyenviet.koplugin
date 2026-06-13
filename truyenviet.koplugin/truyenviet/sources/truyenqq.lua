@@ -174,13 +174,13 @@ end
 
 function Source:parseStoryPage(html, story)
     local chapters = {}
-    local story_url = story.url:gsub("/+$", "")
-    local chapter_prefix = story_url .. "-chap-"
+    local slug = story.url:match("([^/]+)$") or ""
+    local base_slug = slug:match("^(.-)%-%d+%.html$") or slug:match("^(.-)%.html$") or slug
 
     for anchor_attrs, anchor_html in html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
         local href = Util.getAttribute(anchor_attrs, "href")
         local chapter_url = Util.absoluteUrl(self.base_url, href)
-        if chapter_url and chapter_url:sub(1, #chapter_prefix) == chapter_prefix then
+        if chapter_url and chapter_url:find(base_slug, 1, true) and chapter_url:find("%-chap%-") then
             table.insert(chapters, {
                 title = Util.stripTags(anchor_html),
                 url = chapter_url,

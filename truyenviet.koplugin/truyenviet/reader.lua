@@ -7,11 +7,13 @@ local Reader = {
     active = false,
     switching_document = false,
     on_return_callback = nil,
+    on_next_chapter_callback = nil,
 }
 
-function Reader:show(path, on_return_callback)
+function Reader:show(path, on_return_callback, on_next_chapter_callback)
     self.active = true
     self.on_return_callback = on_return_callback
+    self.on_next_chapter_callback = on_next_chapter_callback
 
     if ReaderUI.instance then
         self.switching_document = true
@@ -50,6 +52,17 @@ function Reader:addToMainMenu(menu_items)
             self:returnToPlugin()
         end,
     }
+    if self.on_next_chapter_callback then
+        menu_items.truyenviet_next_chapter = {
+            text = "Chương tiếp theo",
+            sorting_hint = "main",
+            callback = function()
+                local cb = self.on_next_chapter_callback
+                self:returnToPlugin()
+                UIManager:nextTick(cb)
+            end,
+        }
+    end
 end
 
 function Reader:returnToPlugin()

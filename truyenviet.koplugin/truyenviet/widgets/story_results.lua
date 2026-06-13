@@ -73,8 +73,6 @@ function StoryItem:init()
             bold = true,
             width = text_width,
             height = self.height - source_height - padding * 3,
-            height_adjust = true,
-            height_overflow_show_ellipsis = true,
         },
         VerticalSpan:new{ width = padding },
         self.source_widget,

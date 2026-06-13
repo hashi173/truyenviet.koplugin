@@ -6,6 +6,7 @@ local BUILTIN_SOURCES = {
     require("truyenviet/sources/truyenfull"),
     require("truyenviet/sources/truyenqq"),
     require("truyenviet/sources/dualeo"),
+    require("truyenviet/sources/truyendich"),
 }
 
 local SOURCES_BY_ID = {}
@@ -14,12 +15,23 @@ for _, source in ipairs(BUILTIN_SOURCES) do
 end
 
 function SourceRegistry:get(source_id)
-    return SOURCES_BY_ID[source_id]
+    local source = SOURCES_BY_ID[source_id]
+    if source then
+        local custom_url = Storage:getCustomBaseUrl(source.id)
+        if custom_url then
+            source.base_url = custom_url
+        end
+    end
+    return source
 end
 
 function SourceRegistry:listAll()
     local result = {}
     for _, source in ipairs(BUILTIN_SOURCES) do
+        local custom_url = Storage:getCustomBaseUrl(source.id)
+        if custom_url then
+            source.base_url = custom_url
+        end
         table.insert(result, source)
     end
     return result
@@ -29,6 +41,10 @@ function SourceRegistry:listEnabled()
     local result = {}
     for _, source in ipairs(BUILTIN_SOURCES) do
         if Storage:isSourceEnabled(source.id) then
+            local custom_url = Storage:getCustomBaseUrl(source.id)
+            if custom_url then
+                source.base_url = custom_url
+            end
             table.insert(result, source)
         end
     end

@@ -46,6 +46,37 @@ function Storage:getCoverCacheDir()
     return path
 end
 
+function Storage:clearCoverCacheDir()
+    local dir = self:getCoverCacheDir()
+    local ok = pcall(function()
+        for file in lfs.dir(dir) do
+            if file ~= "." and file ~= ".." then
+                local path = ffiutil.joinPath(dir, file)
+                if lfs.attributes(path, "mode") == "file" then
+                    os.remove(path)
+                end
+            end
+        end
+    end)
+    return ok
+end
+
+function Storage:getCustomBaseUrl(source_id)
+    self:initialize()
+    return self.settings:readSetting("custom_url_" .. source_id)
+end
+
+function Storage:setCustomBaseUrl(source_id, url)
+    self:initialize()
+    if url and url ~= "" then
+        url = url:gsub("/+$", "")
+        self.settings:saveSetting("custom_url_" .. source_id, url)
+    else
+        self.settings:saveSetting("custom_url_" .. source_id, nil)
+    end
+    self.settings:flush()
+end
+
 function Storage:isSourceEnabled(source_id)
     self:initialize()
     return self.disabled_sources[source_id] ~= true
@@ -153,6 +184,58 @@ function Storage:listFavorites()
         return left.title:lower() < right.title:lower()
     end)
     return result
+end
+
+function Storage:getHistory()
+    self:initialize()
+    return self.settings:readSetting("history", {})
+end
+
+function Storage:saveHistory(story, chapter)
+    local history = self:getHistory()
+    local existing_idx
+    for i, item in ipairs(history) do
+        if item.story.source_id == story.source_id and item.story.url == story.url then
+            existing_idx = i
+            break
+        end
+    end
+    if existing_idx then
+        table.remove(history, existing_idx)
+    end
+    
+    local clean_story = favoriteRecord(story)
+    table.insert(history, 1, {
+        story = clean_story,
+        chapter = {
+            title = chapter.title,
+            url = chapter.url,
+        },
+        time = os.time(),
+    })
+    
+    while #history > 100 do
+        table.remove(history)
+    end
+    
+    self.settings:saveSetting("history", history)
+    self.settings:flush()
+end
+
+function Storage:removeHistory(story)
+    local history = self:getHistory()
+    local existing_idx
+    for i, item in ipairs(history) do
+        if item.story.source_id == story.source_id and item.story.url == story.url then
+            existing_idx = i
+            break
+        end
+    end
+    if existing_idx then
+        table.remove(history, existing_idx)
+        self.settings:saveSetting("history", history)
+        self.settings:flush()
+    end
 end
 
 return Storage
