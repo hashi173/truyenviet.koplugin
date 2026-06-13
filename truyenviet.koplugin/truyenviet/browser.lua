@@ -222,9 +222,11 @@ function Browser:showRoot()
                 return tostring(#SourceRegistry:listEnabled())
             end,
             callback = function()
-                UIManager:close(view)
-                self:showSearchDialog(nil, function()
-                    self:showRoot()
+                UIManager:nextTick(function()
+                    UIManager:close(view)
+                    self:showSearchDialog(nil, function()
+                        self:showRoot()
+                    end)
                 end)
             end,
         },
@@ -245,13 +247,17 @@ function Browser:showRoot()
                     if not ok then
                         showError(err)
                     end
-                    UIManager:close(view)
-                    self:showRoot()
+                    UIManager:nextTick(function()
+                        UIManager:close(view)
+                        self:showRoot()
+                    end)
                     return
                 end
-                UIManager:close(view)
-                self:browseSource(current_source, nil, 1, function()
-                    self:showRoot()
+                UIManager:nextTick(function()
+                    UIManager:close(view)
+                    self:browseSource(current_source, nil, 1, function()
+                        self:showRoot()
+                    end)
                 end)
             end,
         })
@@ -274,9 +280,11 @@ function Browser:showRoot()
                 return tostring(#Storage:listFavorites())
             end,
             callback = function()
-                UIManager:close(view)
-                self:showFavorites(function()
-                    self:showRoot()
+                UIManager:nextTick(function()
+                    UIManager:close(view)
+                    self:showFavorites(function()
+                        self:showRoot()
+                    end)
                 end)
             end,
         })
@@ -299,11 +307,7 @@ function Browser:showRoot()
                     ReaderUI.instance:onClose()
                 end
                 UIManager:nextTick(function()
-                    if FileManager.instance then
-                        FileManager.instance:reinit(Storage:getRootDir())
-                    else
-                        FileManager:showFiles(Storage:getRootDir())
-                    end
+                    FileManager:showFiles(Storage:getRootDir())
                 end)
             end,
         })
@@ -336,7 +340,7 @@ function Browser:showRoot()
                         })
                         return
                     end
-                    local current_version = "1.0.2"
+                    local current_version = "1.0.3"
                     local latest_version = res:match('"tag_name"%s*:%s*"v?([^"]+)"') or ""
                     
                     if latest_version ~= "" and latest_version ~= current_version then
@@ -413,8 +417,10 @@ function Browser:showRoot()
                 local is_fast = Storage.settings:readSetting("fast_mode", false)
                 Storage.settings:saveSetting("fast_mode", not is_fast)
                 Storage.settings:flush()
-                UIManager:close(view)
-                self:showRoot()
+                UIManager:nextTick(function()
+                    UIManager:close(view)
+                    self:showRoot()
+                end)
             end,
         })
     table.insert(items, {
@@ -649,7 +655,7 @@ function Browser:showStories(title, stories, on_return_callback, options)
         title = title,
         subtitle = options.subtitle,
         stories = stories,
-        on_return_callback = on_return_callback,
+        close_callback = on_return_callback,
         search_callback = options.on_search and function()
             UIManager:close(view)
             options.on_search(function()

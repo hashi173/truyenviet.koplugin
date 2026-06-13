@@ -52,12 +52,18 @@ function StoryItem:init()
             scale_factor = 0,
         }
     else
-        cover_widget = TextWidget:new{
-            text = "Không có\nảnh bìa",
-            face = Font:getFace("smallinfofont", 16),
+        cover_widget = FrameContainer:new{
             width = cover_width,
             height = cover_height,
-            align = "center",
+            background = Blitbuffer.COLOR_LIGHT_GRAY,
+            CenterContainer:new{
+                dimen = Geom:new{ w = cover_width, h = cover_height },
+                TextWidget:new{
+                    text = "No Cover",
+                    face = Font:getFace("smallinfofont", 16),
+                    max_width = cover_width,
+                }
+            }
         }
     end
 
