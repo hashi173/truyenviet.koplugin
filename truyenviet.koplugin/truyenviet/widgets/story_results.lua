@@ -52,10 +52,12 @@ function StoryItem:init()
             scale_factor = 0,
         }
     else
-        cover_widget = IconWidget:new{
-            icon = "book.opened",
-            width = math.floor(cover_width * 0.65),
-            height = math.floor(cover_width * 0.65),
+        cover_widget = TextWidget:new{
+            text = "Không có\nảnh bìa",
+            face = Font:getFace("smallinfofont", 16),
+            width = cover_width,
+            height = cover_height,
+            align = "center",
         }
     end
 
