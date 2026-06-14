@@ -241,7 +241,7 @@ function Browser:showStoryDetails(story, source)
             end
         )
         if not details then
-            showError(err)
+            showDetails({})
             return
         end
         showDetails(details)
@@ -1115,8 +1115,19 @@ function Browser:loadStoryPage(story, source, page, on_return_callback, auto_ope
                 end
             )
             if not page_data then
-                showError(err, on_return_callback)
-                return
+                local local_chapters = self:getLocalChapters(story, source)
+                if local_chapters then
+                    page_data = {
+                        story = story,
+                        page = 1,
+                        total_pages = 1,
+                        chapters = local_chapters,
+                    }
+                    UIManager:show(InfoMessage:new{ text = "Đang hiển thị các chương ngoại tuyến." })
+                else
+                    showError(err, on_return_callback)
+                    return
+                end
             end
             Storage:updateFavorite(page_data.story)
             if auto_open_chapter then
