@@ -341,6 +341,19 @@ function Browser:showRoot()
             end,
         })
     table.insert(items, {
+            text = "Truyện đã tải",
+            mandatory_func = function()
+                return tostring(#Storage:listDownloadedStories())
+            end,
+            callback = function()
+                closeAndRun(view, function()
+                    self:showDownloaded(function()
+                        self:showRoot()
+                    end)
+                end)
+            end,
+        })
+    table.insert(items, {
             text = "Tủ truyện",
             mandatory_func = function()
                 return tostring(#Storage:listFavorites())
@@ -842,6 +855,18 @@ function Browser:showStories(title, stories, on_return_callback, options)
                                 options
                             )
                         end
+                    elseif options.downloads_only then
+                        local downloaded = Storage:listDownloadedStories()
+                        if #downloaded == 0 then
+                            on_return_callback()
+                        else
+                            self:showStories(
+                                title,
+                                downloaded,
+                                on_return_callback,
+                                options
+                            )
+                        end
                     else
                         self:showStories(title, stories, on_return_callback, options)
                     end
@@ -861,6 +886,9 @@ function Browser:showStories(title, stories, on_return_callback, options)
             self:showStoryActions(story, source, function(is_favorite)
                 if options.favorites_only and not is_favorite then
                     view:removeStory(story)
+                elseif options.downloads_only then
+                    -- Usually hold action doesn't delete the download, but just refresh
+                    view:refreshFavorites()
                 else
                     view:refreshFavorites()
                 end
@@ -868,6 +896,19 @@ function Browser:showStories(title, stories, on_return_callback, options)
         end,
     }
     UIManager:show(view)
+end
+
+function Browser:showDownloaded(on_return_callback)
+    local downloaded = Storage:listDownloadedStories()
+    if #downloaded == 0 then
+        UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Chưa có truyện nào được tải." })
+        on_return_callback()
+        return
+    end
+
+    self:showStories("Truyện đã tải", downloaded, on_return_callback, { downloads_only = true })
 end
 
 function Browser:showFavorites(on_return_callback)
@@ -1382,6 +1423,8 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
             end
             return
         end
+
+        Storage:saveStoryMetadata(story)
 
         local action = source.kind == "comic" and "Đang tải ảnh và đóng gói CBZ..." or "Đang tạo tệp HTML..."
         local completed, path, build_err = Trapper:dismissableRunInSubprocess(

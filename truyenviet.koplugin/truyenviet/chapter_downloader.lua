@@ -20,6 +20,8 @@ function ChapterDownloader:cleanupPartials(source, story, chapters)
 end
 
 function ChapterDownloader:download(source, story, chapters)
+    Storage:saveStoryMetadata(story)
+
     local result = {
         downloaded = 0,
         skipped = 0,
