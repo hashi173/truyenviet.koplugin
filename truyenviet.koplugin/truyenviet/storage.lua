@@ -4,7 +4,6 @@ local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
 local ko_util = require("util")
 local Util = require("truyenviet/helpers")
-local SourceRegistry = require("truyenviet/source_registry")
 
 local Storage = {
     settings = nil,
@@ -291,7 +290,7 @@ function Storage:removeHistory(story)
 end
 
 function Storage:saveStoryMetadata(story)
-    local dir = self:getStoryDir(SourceRegistry:get(story.source_id), story)
+    local dir = self:getStoryDir({ id = story.source_id }, story)
     local file_path = ffiutil.joinPath(dir, "metadata.json")
     local file = io.open(file_path, "w")
     if file then
