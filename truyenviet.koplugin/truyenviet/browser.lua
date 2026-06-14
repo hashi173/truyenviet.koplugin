@@ -87,6 +87,20 @@ local function closeAndRun(widget, callback)
     end
 end
 
+local function closeParentView(parent_view)
+    if parent_view then
+        UIManager:close(parent_view)
+    end
+end
+
+local function showLoadingError(message, parent_view, on_return_callback)
+    if parent_view then
+        showError(message)
+    else
+        showError(message, on_return_callback)
+    end
+end
+
 local function withLoading(message, callback)
     local loading = InfoMessage:new{
             title = "Truyện Việt",
@@ -306,11 +320,10 @@ function Browser:showRoot()
                     end)
                     return
                 end
-                closeAndRun(view, function()
-                    self:browseSource(current_source, nil, 1, function()
+                self:browseSource(current_source, nil, 1, function()
                         self:showRoot()
-                    end)
-                end)
+                    end, view)
+                    return true
             end,
         })
     end
@@ -558,7 +571,11 @@ function Browser:search(source, query, on_return_callback, parent_view)
     runOnline(function()
         local sources = source and { source } or SourceRegistry:listEnabled()
         if #sources == 0 then
-            showError("Chưa có nguồn nào được bật.", on_return_callback)
+            showLoadingError(
+                "Chưa có nguồn nào được bật.",
+                parent_view,
+                on_return_callback
+            )
             return
         end
 
@@ -591,9 +608,6 @@ function Browser:search(source, query, on_return_callback, parent_view)
             return
         end
 
-        if parent_view and type(parent_view.onClose) == "function" then
-            UIManager:close(parent_view)
-        end
         self:showStories(
             source and (source.name .. ": " .. query) or query,
             stories,
@@ -608,10 +622,11 @@ function Browser:search(source, query, on_return_callback, parent_view)
                     or string.format("%d kết quả", #stories),
             }
         )
+        closeParentView(parent_view)
     end)
 end
 
-function Browser:browseSource(source, genre, local_page, on_return_callback)
+function Browser:browseSource(source, genre, local_page, on_return_callback, parent_view)
     local ITEMS_PER_PAGE = 10
     self.chunks_per_page = self.chunks_per_page or {}
     local cpp = self.chunks_per_page[source.id] or 1
@@ -654,11 +669,15 @@ function Browser:browseSource(source, genre, local_page, on_return_callback)
         end
 
         if not result then
-            showError(err, on_return_callback)
+            showLoadingError(err, parent_view, on_return_callback)
             return
         end
         if #result.stories == 0 then
-            showError("Không có truyện ở trang này.", on_return_callback)
+            showLoadingError(
+                "Không có truyện ở trang này.",
+                parent_view,
+                on_return_callback
+            )
             return
         end
 
@@ -680,9 +699,6 @@ function Browser:browseSource(source, genre, local_page, on_return_callback)
         local local_total_pages = result.total_pages * cpp
 
         local function showCurrentListing()
-            UIManager:show(Notification:new{
-                text = string.format("Đã chuyển tới trang %d", local_page)
-            })
             self:showStories(
                 source.name .. " · " .. result.title,
                 chunked_stories,
@@ -698,37 +714,45 @@ function Browser:browseSource(source, genre, local_page, on_return_callback)
                     on_search = function(return_to_listing, parent_view)
                         self:showSearchDialog(source, return_to_listing, parent_view)
                     end,
-                    on_genres = function(return_to_listing)
+                    on_genres = function(return_to_listing, p_view)
                         self:showGenreMenu(
                             source,
                             result.genres,
-                            return_to_listing
+                            return_to_listing,
+                            p_view
                         )
                     end,
-                    on_prev_page = local_page > 1 and function()
+                    on_prev_page = local_page > 1 and function(parent)
                         self:browseSource(
                             source,
                             genre,
                             local_page - 1,
-                            on_return_callback
+                            on_return_callback,
+                            parent
                         )
                     end or nil,
-                    on_next_page = local_page < local_total_pages and function()
+                    on_next_page = local_page < local_total_pages and function(parent)
                         self:browseSource(
                             source,
                             genre,
                             local_page + 1,
-                            on_return_callback
+                            on_return_callback,
+                            parent
                         )
                     end or nil,
                 }
             )
+            closeParentView(parent_view)
+            parent_view = nil
+            UIManager:show(Notification:new{
+                text = string.format("Đã chuyển tới trang %d", local_page)
+            })
         end
         showCurrentListing()
     end)
 end
 
-function Browser:showGenreMenu(source, genres, on_return_callback)
+function Browser:showGenreMenu(source, genres, on_return_callback, parent_view)
     local view
     local items = {}
     for _, genre in ipairs(genres or {}) do
@@ -736,11 +760,10 @@ function Browser:showGenreMenu(source, genres, on_return_callback)
         table.insert(items, {
             text = current_genre.name,
             callback = function()
-                closeAndRun(view, function()
-                    self:browseSource(source, current_genre, 1, function()
-                        self:showGenreMenu(source, genres, on_return_callback)
-                    end)
-                end)
+                self:browseSource(source, current_genre, 1, function()
+                    self:showGenreMenu(source, genres, on_return_callback)
+                end, view)
+                return true
             end,
         })
     end
@@ -790,10 +813,10 @@ function Browser:showStories(title, stories, on_return_callback, options)
         server_page = options.server_page,
         server_total_pages = options.server_total_pages,
         server_prev_callback = options.on_prev_page and function()
-            closeAndRun(view, options.on_prev_page)
+            options.on_prev_page(view)
         end or nil,
         server_next_callback = options.on_next_page and function()
-            closeAndRun(view, options.on_next_page)
+            options.on_next_page(view)
         end or nil,
         story_callback = function(story)
             if options.on_story_tap then
