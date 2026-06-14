@@ -4,6 +4,7 @@ local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
 local ko_util = require("util")
 local Util = require("truyenviet/helpers")
+local json = require("json")
 
 local Storage = {
     settings = nil,
@@ -294,7 +295,7 @@ function Storage:saveStoryMetadata(story)
     local file_path = ffiutil.joinPath(dir, "metadata.json")
     local file = io.open(file_path, "w")
     if file then
-        file:write(ko_util.jsonEncode(favoriteRecord(story)))
+        file:write(json.encode(favoriteRecord(story)))
         file:close()
         return true
     end
@@ -330,7 +331,7 @@ function Storage:listDownloadedStories()
                                     if meta_file then
                                         local content = meta_file:read("*a")
                                         meta_file:close()
-                                        local ok, decoded = pcall(ko_util.jsonDecode, content)
+                                        local ok, decoded = pcall(json.decode, content)
                                         if ok and type(decoded) == "table" then
                                             story = decoded
                                         end
