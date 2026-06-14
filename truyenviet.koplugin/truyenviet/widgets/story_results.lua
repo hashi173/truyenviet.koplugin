@@ -181,12 +181,10 @@ function StoryResults:init()
         left_icon_tap_callback = function()
             self:onClose()
         end,
-        right_icon = self.search_callback and "appbar.search" or self.delete_all_callback and "appbar.close" or nil,
+        right_icon = self.search_callback and "appbar.search" or nil,
         right_icon_tap_callback = function()
             if self.search_callback then
                 self.search_callback()
-            elseif self.delete_all_callback then
-                self.delete_all_callback()
             end
         end,
         with_bottom_line = true,

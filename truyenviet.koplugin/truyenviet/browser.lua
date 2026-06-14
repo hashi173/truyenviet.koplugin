@@ -87,20 +87,6 @@ local function closeAndRun(widget, callback)
     end
 end
 
-local function closeParentView(parent_view)
-    if parent_view then
-        UIManager:close(parent_view)
-    end
-end
-
-local function showLoadingError(message, parent_view, on_return_callback)
-    if parent_view then
-        showError(message)
-    else
-        showError(message, on_return_callback)
-    end
-end
-
 local function withLoading(message, callback)
     local loading = InfoMessage:new{
             title = "Truyện Việt",
@@ -241,7 +227,7 @@ function Browser:showStoryDetails(story, source)
             end
         )
         if not details then
-            showDetails({})
+            showError(err)
             return
         end
         showDetails(details)
@@ -320,10 +306,11 @@ function Browser:showRoot()
                     end)
                     return
                 end
-                self:browseSource(current_source, nil, 1, function()
+                closeAndRun(view, function()
+                    self:browseSource(current_source, nil, 1, function()
                         self:showRoot()
-                    end, view)
-                    return true
+                    end)
+                end)
             end,
         })
     end
@@ -335,19 +322,6 @@ function Browser:showRoot()
             callback = function()
                 closeAndRun(view, function()
                     self:showHistory(function()
-                        self:showRoot()
-                    end)
-                end)
-            end,
-        })
-    table.insert(items, {
-            text = "Truyện đã tải",
-            mandatory_func = function()
-                return tostring(#Storage:listDownloadedStories())
-            end,
-            callback = function()
-                closeAndRun(view, function()
-                    self:showDownloaded(function()
                         self:showRoot()
                     end)
                 end)
@@ -584,11 +558,7 @@ function Browser:search(source, query, on_return_callback, parent_view)
     runOnline(function()
         local sources = source and { source } or SourceRegistry:listEnabled()
         if #sources == 0 then
-            showLoadingError(
-                "Chưa có nguồn nào được bật.",
-                parent_view,
-                on_return_callback
-            )
+            showError("Chưa có nguồn nào được bật.", on_return_callback)
             return
         end
 
@@ -621,6 +591,9 @@ function Browser:search(source, query, on_return_callback, parent_view)
             return
         end
 
+        if parent_view and type(parent_view.onClose) == "function" then
+            UIManager:close(parent_view)
+        end
         self:showStories(
             source and (source.name .. ": " .. query) or query,
             stories,
@@ -635,11 +608,10 @@ function Browser:search(source, query, on_return_callback, parent_view)
                     or string.format("%d kết quả", #stories),
             }
         )
-        closeParentView(parent_view)
     end)
 end
 
-function Browser:browseSource(source, genre, local_page, on_return_callback, parent_view)
+function Browser:browseSource(source, genre, local_page, on_return_callback)
     local ITEMS_PER_PAGE = 10
     self.chunks_per_page = self.chunks_per_page or {}
     local cpp = self.chunks_per_page[source.id] or 1
@@ -682,15 +654,11 @@ function Browser:browseSource(source, genre, local_page, on_return_callback, par
         end
 
         if not result then
-            showLoadingError(err, parent_view, on_return_callback)
+            showError(err, on_return_callback)
             return
         end
         if #result.stories == 0 then
-            showLoadingError(
-                "Không có truyện ở trang này.",
-                parent_view,
-                on_return_callback
-            )
+            showError("Không có truyện ở trang này.", on_return_callback)
             return
         end
 
@@ -712,6 +680,9 @@ function Browser:browseSource(source, genre, local_page, on_return_callback, par
         local local_total_pages = result.total_pages * cpp
 
         local function showCurrentListing()
+            UIManager:show(Notification:new{
+                text = string.format("Đã chuyển tới trang %d", local_page)
+            })
             self:showStories(
                 source.name .. " · " .. result.title,
                 chunked_stories,
@@ -727,45 +698,37 @@ function Browser:browseSource(source, genre, local_page, on_return_callback, par
                     on_search = function(return_to_listing, parent_view)
                         self:showSearchDialog(source, return_to_listing, parent_view)
                     end,
-                    on_genres = function(return_to_listing, p_view)
+                    on_genres = function(return_to_listing)
                         self:showGenreMenu(
                             source,
                             result.genres,
-                            return_to_listing,
-                            p_view
+                            return_to_listing
                         )
                     end,
-                    on_prev_page = local_page > 1 and function(parent)
+                    on_prev_page = local_page > 1 and function()
                         self:browseSource(
                             source,
                             genre,
                             local_page - 1,
-                            on_return_callback,
-                            parent
+                            on_return_callback
                         )
                     end or nil,
-                    on_next_page = local_page < local_total_pages and function(parent)
+                    on_next_page = local_page < local_total_pages and function()
                         self:browseSource(
                             source,
                             genre,
                             local_page + 1,
-                            on_return_callback,
-                            parent
+                            on_return_callback
                         )
                     end or nil,
                 }
             )
-            closeParentView(parent_view)
-            parent_view = nil
-            UIManager:show(Notification:new{
-                text = string.format("Đã chuyển tới trang %d", local_page)
-            })
         end
         showCurrentListing()
     end)
 end
 
-function Browser:showGenreMenu(source, genres, on_return_callback, parent_view)
+function Browser:showGenreMenu(source, genres, on_return_callback)
     local view
     local items = {}
     for _, genre in ipairs(genres or {}) do
@@ -773,10 +736,11 @@ function Browser:showGenreMenu(source, genres, on_return_callback, parent_view)
         table.insert(items, {
             text = current_genre.name,
             callback = function()
-                self:browseSource(source, current_genre, 1, function()
-                    self:showGenreMenu(source, genres, on_return_callback)
-                end, view)
-                return true
+                closeAndRun(view, function()
+                    self:browseSource(source, current_genre, 1, function()
+                        self:showGenreMenu(source, genres, on_return_callback)
+                    end)
+                end)
             end,
         })
     end
@@ -826,10 +790,10 @@ function Browser:showStories(title, stories, on_return_callback, options)
         server_page = options.server_page,
         server_total_pages = options.server_total_pages,
         server_prev_callback = options.on_prev_page and function()
-            options.on_prev_page(view)
+            closeAndRun(view, options.on_prev_page)
         end or nil,
         server_next_callback = options.on_next_page and function()
-            options.on_next_page(view)
+            closeAndRun(view, options.on_next_page)
         end or nil,
         story_callback = function(story)
             if options.on_story_tap then
@@ -855,18 +819,6 @@ function Browser:showStories(title, stories, on_return_callback, options)
                                 options
                             )
                         end
-                    elseif options.downloads_only then
-                        local downloaded = Storage:listDownloadedStories()
-                        if #downloaded == 0 then
-                            on_return_callback()
-                        else
-                            self:showStories(
-                                title,
-                                downloaded,
-                                on_return_callback,
-                                options
-                            )
-                        end
                     else
                         self:showStories(title, stories, on_return_callback, options)
                     end
@@ -886,9 +838,6 @@ function Browser:showStories(title, stories, on_return_callback, options)
             self:showStoryActions(story, source, function(is_favorite)
                 if options.favorites_only and not is_favorite then
                     view:removeStory(story)
-                elseif options.downloads_only then
-                    -- Usually hold action doesn't delete the download, but just refresh
-                    view:refreshFavorites()
                 else
                     view:refreshFavorites()
                 end
@@ -896,48 +845,6 @@ function Browser:showStories(title, stories, on_return_callback, options)
         end,
     }
     UIManager:show(view)
-end
-
-function Browser:showDownloaded(on_return_callback)
-    local downloaded = Storage:listDownloadedStories()
-    if #downloaded == 0 then
-        UIManager:show(InfoMessage:new{
-            title = "Truyện Việt",
-            text = "Chưa có truyện nào được tải." })
-        on_return_callback()
-        return
-    end
-
-    self:showStories("Truyện đã tải", downloaded, on_return_callback, {
-        downloads_only = true,
-        delete_all_callback = function(view)
-            UIManager:show(ConfirmBox:new{
-                title = "Truyện Việt",
-                text = "Bạn có chắc muốn xóa TẤT CẢ truyện đã tải?",
-                ok_text = "Xóa tất cả",
-                ok_callback = function()
-                    for _, story in ipairs(downloaded) do
-                        Storage:deleteDownloadedStory(story)
-                    end
-                    closeAndRun(view, on_return_callback)
-                end,
-            })
-        end,
-        on_story_hold = function(story, view)
-            UIManager:show(ConfirmBox:new{
-                title = "Truyện Việt",
-                text = "Xóa truyện đã tải?",
-                ok_text = "Xóa",
-                ok_callback = function()
-                    Storage:deleteDownloadedStory(story)
-                    view:removeStory(story)
-                    if #view.stories == 0 then
-                        closeAndRun(view, on_return_callback)
-                    end
-                end,
-            })
-        end,
-    })
 end
 
 function Browser:showFavorites(on_return_callback)
@@ -968,19 +875,6 @@ function Browser:showHistory(on_return_callback)
         stories,
         on_return_callback,
         {
-            delete_all_callback = function(view)
-                UIManager:show(ConfirmBox:new{
-                    title = "Truyện Việt",
-                    text = "Xóa TẤT CẢ lịch sử đọc?",
-                    ok_text = "Xóa tất cả",
-                    ok_callback = function()
-                        for _, story in ipairs(stories) do
-                            Storage:removeHistory(story)
-                        end
-                        closeAndRun(view, on_return_callback)
-                    end,
-                })
-            end,
             on_story_tap = function(story, view)
                 local source = SourceRegistry:get(story.source_id)
                 if not source then
@@ -991,8 +885,8 @@ function Browser:showHistory(on_return_callback)
                     story.source_id .. "|" .. story.url
                 ]
                 UIManager:show(ConfirmBox:new{
-                    title = "Truyện Việt",
-                    text = "Đọc tiếp: " .. item.chapter.title .. "?",
+            title = "Truyện Việt",
+            text = "Đọc tiếp: " .. item.chapter.title .. "?",
                     ok_text = "Đọc tiếp",
                     cancel_text = "Mục lục",
                     ok_callback = function()
@@ -1013,8 +907,8 @@ function Browser:showHistory(on_return_callback)
             end,
             on_story_hold = function(story, view)
                 UIManager:show(ConfirmBox:new{
-                    title = "Truyện Việt",
-                    text = "Xóa khỏi lịch sử đọc?",
+            title = "Truyện Việt",
+            text = "Xóa khỏi lịch sử đọc?",
                     ok_text = "Xóa",
                     ok_callback = function()
                         Storage:removeHistory(story)
@@ -1136,29 +1030,12 @@ function Browser:getLocalChapters(story, source)
     end
     
     table.sort(chapters, function(a, b)
-        local function getLastNumber(s)
-            local num
-            for n in string.gmatch(s, "%d+") do
-                num = tonumber(n)
-            end
-            return num
-        end
-
-        local num_a = getLastNumber(a.title)
-        local num_b = getLastNumber(b.title)
-
+        local num_a = tonumber(string.match(a.title, "%d+"))
+        local num_b = tonumber(string.match(b.title, "%d+"))
         if num_a and num_b and num_a ~= num_b then
-            if source.reversed_chapters then
-                return num_a > num_b
-            else
-                return num_a < num_b
-            end
+            return num_a < num_b
         end
-        if source.reversed_chapters then
-            return a.title > b.title
-        else
-            return a.title < b.title
-        end
+        return a.title < b.title
     end)
     
     return chapters
@@ -1174,19 +1051,8 @@ function Browser:loadStoryPage(story, source, page, on_return_callback, auto_ope
                 end
             )
             if not page_data then
-                local local_chapters = self:getLocalChapters(story, source)
-                if local_chapters then
-                    page_data = {
-                        story = story,
-                        page = 1,
-                        total_pages = 1,
-                        chapters = local_chapters,
-                    }
-                    UIManager:show(InfoMessage:new{ text = "Đang hiển thị các chương ngoại tuyến." })
-                else
-                    showError(err, on_return_callback)
-                    return
-                end
+                showError(err, on_return_callback)
+                return
             end
             Storage:updateFavorite(page_data.story)
             if auto_open_chapter then
@@ -1445,24 +1311,15 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
 
     local function on_next_chapter()
         if next_chapter then
-            UIManager:show(Notification:new{ text = "Đang mở chương tiếp theo..." })
-            UIManager:nextTick(function()
-                self:openChapter(nil, page_data, source, next_chapter, on_return_callback)
-            end)
+            self:openChapter(nil, page_data, source, next_chapter, on_return_callback)
         elseif source.reversed_chapters and page_data.page > 1 then
-            UIManager:nextTick(function()
-                self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
-            end)
+            self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
         elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
-            UIManager:nextTick(function()
-                self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
-            end)
+            self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
         else
-            UIManager:nextTick(function()
-                UIManager:show(InfoMessage:new{
-                title = "Truyện Việt",
-                text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
-            end)
+            UIManager:show(InfoMessage:new{
+            title = "Truyện Việt",
+            text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
         end
     end
 
@@ -1493,8 +1350,6 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
             end
             return
         end
-
-        Storage:saveStoryMetadata(story)
 
         local action = source.kind == "comic" and "Đang tải ảnh và đóng gói CBZ..." or "Đang tạo tệp HTML..."
         local completed, path, build_err = Trapper:dismissableRunInSubprocess(

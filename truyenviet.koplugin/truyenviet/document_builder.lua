@@ -70,6 +70,21 @@ function DocumentBuilder:buildText(source, story, chapter, payload)
     return replaceFile(temp_path, path)
 end
 
+local function downloadImage(image, referer)
+    local last_error
+    for _, url in ipairs(image.urls) do
+        local content, err, headers = Http:get(url, {
+            ["Referer"] = referer,
+            ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        })
+        if content then
+            return content, headers, url
+        end
+        last_error = err
+    end
+    return nil, last_error
+end
+
 function DocumentBuilder:buildComic(source, story, chapter, payload)
     local path = Storage:getChapterPath(source, story, chapter)
     local temp_path = path .. ".part"
@@ -88,13 +103,6 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
         local has_error = false
         local archive_err = nil
 
-        local function setArchiveError(message)
-            if not has_error then
-                has_error = true
-                archive_err = message
-            end
-        end
-
         for index, image in ipairs(payload.images) do
             while active_downloads >= max_concurrent do
                 copas.step()
@@ -106,31 +114,26 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
             copas.addthread(function()
                 local last_error
                 local content, headers, final_url
-                for _, url in ipairs(image.urls or {}) do
+                for _, url in ipairs(image.urls) do
                     local c, e, h = Http:requestAsync("GET", url, nil, {
                         ["Referer"] = payload.referer or "",
                         ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
                     })
-                    if c and ImageUtils:isSupported(h, c) then
+                    if c then
                         content = c
                         headers = h
                         final_url = url
                         break
                     end
-                    last_error = c
-                        and string.format(
-                            "Không hỗ trợ định dạng ảnh trang %d: %s",
-                            index,
-                            tostring(url)
-                        )
-                        or e
+                    last_error = e
                 end
 
-                if content then
+                if content and ImageUtils:isSupported(headers, content) then
                     local extension = ImageUtils:detectExtension(headers, content, final_url)
                     local entry_name = string.format("%04d.%s", index, extension)
                     if not archive:addFileFromMemory(entry_name, content, os.time()) then
-                        setArchiveError(archive.err or ("Không thể ghi " .. entry_name))
+                        has_error = true
+                        archive_err = archive.err or ("Không thể ghi " .. entry_name)
                     end
                 end
 

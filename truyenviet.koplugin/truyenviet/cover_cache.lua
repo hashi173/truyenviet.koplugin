@@ -84,8 +84,7 @@ function CoverCache:prefetch(stories, registry)
     local limit = #stories
     
     local ok, copas = pcall(require, "copas")
-    local ok_http = pcall(require, "copas.http")
-    if ok and copas and copas.addthread and ok_http then
+    if ok and copas and copas.addthread then
         local active_downloads = 0
         local max_concurrent = 4
         
