@@ -1299,7 +1299,18 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
 
     local next_chapter
     for i, c in ipairs(page_data.chapters) do
+        local match = false
         if c.url == chapter.url then
+            match = true
+        elseif c.is_local and chapter.is_local and c.title == chapter.title then
+            match = true
+        elseif c.is_local and not chapter.is_local then
+            if c.title == chapter.title or c.url == ("local/" .. chapter.title) then
+                match = true
+            end
+        end
+        
+        if match then
             if source.reversed_chapters then
                 next_chapter = page_data.chapters[i - 1]
             else
@@ -1312,10 +1323,16 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
     local function on_next_chapter()
         if next_chapter then
             self:openChapter(nil, page_data, source, next_chapter, on_return_callback)
-        elseif source.reversed_chapters and page_data.page > 1 then
-            self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
-        elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
-            self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
+        elseif page_data.total_pages > 1 then
+            if source.reversed_chapters and page_data.page > 1 then
+                self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
+            elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
+                self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
+            else
+                UIManager:show(InfoMessage:new{
+                title = "Truyện Việt",
+                text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
+            end
         else
             UIManager:show(InfoMessage:new{
             title = "Truyện Việt",
