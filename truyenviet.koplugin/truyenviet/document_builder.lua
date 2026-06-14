@@ -4,6 +4,7 @@ local ImageUtils = require("truyenviet/image_utils")
 local Storage = require("truyenviet/storage")
 local Util = require("truyenviet/helpers")
 local lfs = require("libs/libkoreader-lfs")
+local socket = require("socket")
 
 local DocumentBuilder = {}
 
@@ -85,6 +86,31 @@ local function downloadImage(image, referer)
     return nil, last_error
 end
 
+local function downloadImageWithRetry(image, referer, max_retries)
+    max_retries = max_retries or 3
+    local last_error
+    local delay_ms = 500
+    
+    for attempt = 1, max_retries do
+        for _, url in ipairs(image.urls) do
+            local content, err, headers = Http:get(url, {
+                ["Referer"] = referer,
+                ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            })
+            if content then
+                return content, headers, url
+            end
+            last_error = err
+        end
+        
+        if attempt < max_retries then
+            socket.sleep(delay_ms / 1000)
+            delay_ms = math.min(delay_ms * 2, 5000)
+        end
+    end
+    return nil, last_error
+end
+
 function DocumentBuilder:buildComic(source, story, chapter, payload)
     local path = Storage:getChapterPath(source, story, chapter)
     local temp_path = path .. ".part"
@@ -99,9 +125,12 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
     local ok, result, result_err = pcall(function()
         local copas = require("copas")
         local active_downloads = 0
-        local max_concurrent = 8
+        local max_concurrent = 4
         local has_error = false
         local archive_err = nil
+        local failed_images = {}
+        local downloaded_count = 0
+        local max_retries = source.id == "dualeo" and 3 or 2
 
         for index, image in ipairs(payload.images) do
             while active_downloads >= max_concurrent do
@@ -114,18 +143,29 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
             copas.addthread(function()
                 local last_error
                 local content, headers, final_url
-                for _, url in ipairs(image.urls) do
-                    local c, e, h = Http:requestAsync("GET", url, nil, {
-                        ["Referer"] = payload.referer or "",
-                        ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                    })
-                    if c then
-                        content = c
-                        headers = h
-                        final_url = url
+                
+                for attempt = 1, max_retries do
+                    for _, url in ipairs(image.urls) do
+                        local c, e, h = Http:requestAsync("GET", url, nil, {
+                            ["Referer"] = payload.referer or "",
+                            ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                        })
+                        if c then
+                            content = c
+                            headers = h
+                            final_url = url
+                            break
+                        end
+                        last_error = e
+                    end
+                    
+                    if content then
                         break
                     end
-                    last_error = e
+                    
+                    if attempt < max_retries then
+                        socket.sleep(0.2 * attempt)
+                    end
                 end
 
                 if content and ImageUtils:isSupported(headers, content) then
@@ -134,7 +174,11 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                     if not archive:addFileFromMemory(entry_name, content, os.time()) then
                         has_error = true
                         archive_err = archive.err or ("Không thể ghi " .. entry_name)
+                    else
+                        downloaded_count = downloaded_count + 1
                     end
+                else
+                    table.insert(failed_images, index)
                 end
 
                 active_downloads = active_downloads - 1
@@ -148,6 +192,12 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
         if has_error then
             error(archive_err)
         end
+        
+        if #failed_images > 0 then
+            error(string.format("Lỗi tải %d ảnh (thành công %d/%d)", 
+                #failed_images, downloaded_count, #payload.images))
+        end
+        
         return true
     end)
 
