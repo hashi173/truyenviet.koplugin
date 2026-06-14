@@ -1334,15 +1334,24 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
 
     local function on_next_chapter()
         if next_chapter then
-            self:openChapter(nil, page_data, source, next_chapter, on_return_callback)
+            UIManager:show(Notification:new{ text = "Đang mở chương tiếp theo..." })
+            UIManager:nextTick(function()
+                self:openChapter(nil, page_data, source, next_chapter, on_return_callback)
+            end)
         elseif source.reversed_chapters and page_data.page > 1 then
-            self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
+            UIManager:nextTick(function()
+                self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
+            end)
         elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
-            self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
+            UIManager:nextTick(function()
+                self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
+            end)
         else
-            UIManager:show(InfoMessage:new{
-            title = "Truyện Việt",
-            text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
+            UIManager:nextTick(function()
+                UIManager:show(InfoMessage:new{
+                title = "Truyện Việt",
+                text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
+            end)
         end
     end
 
