@@ -178,7 +178,9 @@ function Source:parseStoryPage(html, story)
     local slug = story.url:match("([^/]+)$") or ""
     local base_slug = slug:match("^(.-)%-%d+%.html$") or slug:match("^(.-)%.html$") or slug
 
-    for anchor_attrs, anchor_html in html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
+    local list_html = html:match('<div[^>]*class="[^"]*works%-chapter%-list[^"]*"[^>]*>(.*)') or html
+
+    for anchor_attrs, anchor_html in list_html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
         local href = Util.getAttribute(anchor_attrs, "href")
         local chapter_url = Util.absoluteUrl(self.base_url, href)
         if chapter_url and chapter_url:find(base_slug, 1, true) and chapter_url:find("%-chap%-") then

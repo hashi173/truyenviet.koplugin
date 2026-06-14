@@ -1094,8 +1094,17 @@ function Browser:getLocalChapters(story, source)
     end
     
     table.sort(chapters, function(a, b)
-        local num_a = tonumber(string.match(a.title, "%d+"))
-        local num_b = tonumber(string.match(b.title, "%d+"))
+        local function getLastNumber(s)
+            local num
+            for n in string.gmatch(s, "%d+") do
+                num = tonumber(n)
+            end
+            return num
+        end
+
+        local num_a = getLastNumber(a.title)
+        local num_b = getLastNumber(b.title)
+
         if num_a and num_b and num_a ~= num_b then
             return num_a < num_b
         end
