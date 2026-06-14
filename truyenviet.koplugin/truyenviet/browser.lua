@@ -1106,9 +1106,17 @@ function Browser:getLocalChapters(story, source)
         local num_b = getLastNumber(b.title)
 
         if num_a and num_b and num_a ~= num_b then
-            return num_a < num_b
+            if source.reversed_chapters then
+                return num_a > num_b
+            else
+                return num_a < num_b
+            end
         end
-        return a.title < b.title
+        if source.reversed_chapters then
+            return a.title > b.title
+        else
+            return a.title < b.title
+        end
     end)
     
     return chapters
