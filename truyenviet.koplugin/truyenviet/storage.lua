@@ -360,4 +360,11 @@ function Storage:listDownloadedStories()
     return result
 end
 
+function Storage:deleteDownloadedStory(story)
+    local dir = self:getStoryDir({ id = story.source_id }, story)
+    if lfs.attributes(dir, "mode") == "directory" then
+        os.execute(string.format("rm -rf %q", dir))
+    end
+end
+
 return Storage

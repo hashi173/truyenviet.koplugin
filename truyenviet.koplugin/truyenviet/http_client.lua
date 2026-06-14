@@ -93,7 +93,11 @@ function HttpClient:requestAsync(method, url, body, headers)
     if not validateUrl(url) then
         return nil, "URL không hợp lệ: " .. tostring(url)
     end
-    local copas_http = require("copas.http")
+    local ok, copas_http = pcall(require, "copas.http")
+    if not ok then
+        return self:request(method, url, body, headers)
+    end
+    
     local sink = {}
     local request_headers = mergeHeaders(headers)
     if body then

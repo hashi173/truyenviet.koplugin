@@ -908,7 +908,36 @@ function Browser:showDownloaded(on_return_callback)
         return
     end
 
-    self:showStories("Truyện đã tải", downloaded, on_return_callback, { downloads_only = true })
+    self:showStories("Truyện đã tải", downloaded, on_return_callback, {
+        downloads_only = true,
+        delete_all_callback = function(view)
+            UIManager:show(ConfirmBox:new{
+                title = "Truyện Việt",
+                text = "Bạn có chắc muốn xóa TẤT CẢ truyện đã tải?",
+                ok_text = "Xóa tất cả",
+                ok_callback = function()
+                    for _, story in ipairs(downloaded) do
+                        Storage:deleteDownloadedStory(story)
+                    end
+                    closeAndRun(view, on_return_callback)
+                end,
+            })
+        end,
+        on_story_hold = function(story, view)
+            UIManager:show(ConfirmBox:new{
+                title = "Truyện Việt",
+                text = "Xóa truyện đã tải?",
+                ok_text = "Xóa",
+                ok_callback = function()
+                    Storage:deleteDownloadedStory(story)
+                    view:removeStory(story)
+                    if #view.stories == 0 then
+                        closeAndRun(view, on_return_callback)
+                    end
+                end,
+            })
+        end,
+    })
 end
 
 function Browser:showFavorites(on_return_callback)
@@ -939,6 +968,19 @@ function Browser:showHistory(on_return_callback)
         stories,
         on_return_callback,
         {
+            delete_all_callback = function(view)
+                UIManager:show(ConfirmBox:new{
+                    title = "Truyện Việt",
+                    text = "Xóa TẤT CẢ lịch sử đọc?",
+                    ok_text = "Xóa tất cả",
+                    ok_callback = function()
+                        for _, story in ipairs(stories) do
+                            Storage:removeHistory(story)
+                        end
+                        closeAndRun(view, on_return_callback)
+                    end,
+                })
+            end,
             on_story_tap = function(story, view)
                 local source = SourceRegistry:get(story.source_id)
                 if not source then
@@ -949,8 +991,8 @@ function Browser:showHistory(on_return_callback)
                     story.source_id .. "|" .. story.url
                 ]
                 UIManager:show(ConfirmBox:new{
-            title = "Truyện Việt",
-            text = "Đọc tiếp: " .. item.chapter.title .. "?",
+                    title = "Truyện Việt",
+                    text = "Đọc tiếp: " .. item.chapter.title .. "?",
                     ok_text = "Đọc tiếp",
                     cancel_text = "Mục lục",
                     ok_callback = function()
@@ -971,8 +1013,8 @@ function Browser:showHistory(on_return_callback)
             end,
             on_story_hold = function(story, view)
                 UIManager:show(ConfirmBox:new{
-            title = "Truyện Việt",
-            text = "Xóa khỏi lịch sử đọc?",
+                    title = "Truyện Việt",
+                    text = "Xóa khỏi lịch sử đọc?",
                     ok_text = "Xóa",
                     ok_callback = function()
                         Storage:removeHistory(story)
