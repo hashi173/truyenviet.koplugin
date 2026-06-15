@@ -89,7 +89,7 @@ function HttpClient:postJson(url, payload, headers)
     return self:request("POST", url, body, headers)
 end
 
-function HttpClient:requestAsync(method, url, body, headers)
+function HttpClient:requestAsync(method, url, body, headers, opts)
     if not validateUrl(url) then
         return nil, "URL không hợp lệ: " .. tostring(url)
     end
@@ -99,6 +99,8 @@ function HttpClient:requestAsync(method, url, body, headers)
     if body then
         request_headers["Content-Length"] = tostring(#body)
     end
+    opts = opts or {}
+    local req_timeout = opts.timeout or self.total_timeout
     local reqt = {
         url = url,
         method = method,
@@ -106,7 +108,7 @@ function HttpClient:requestAsync(method, url, body, headers)
         source = body and ltn12.source.string(body) or nil,
         sink = ltn12.sink.table(sink),
         redirect = true,
-        timeout = self.total_timeout
+        timeout = req_timeout
     }
     local ok, result, code, response_headers, status = pcall(function()
         return copas_http.request(reqt)

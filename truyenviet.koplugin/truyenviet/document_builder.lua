@@ -126,14 +126,23 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
     local ok, result, result_err = pcall(function()
         local copas = require("copas")
         local active_downloads = 0
-        local max_concurrent = source.id == "dualeo" and 1 or 4
+        local max_concurrent = source.id == "dualeo" and 2 or 4
         local has_error = false
         local archive_err = nil
         local failed_images = {}
         local downloaded_count = 0
-        local max_retries = source.id == "dualeo" and 5 or 3
+        local max_retries = source.id == "dualeo" and 3 or 3
+
+        local chapter_start = os.time()
+        local chapter_timeout = source.id == "dualeo" and 120 or 300
 
         for index, image in ipairs(payload.images) do
+            if os.time() - chapter_start > chapter_timeout then
+                has_error = true
+                archive_err = "Timeout downloading chapter after " .. tostring(chapter_timeout) .. "s"
+                Debug.write("DocumentBuilder:buildComic aborting chapter due to overall timeout")
+                break
+            end
             while active_downloads >= max_concurrent do
                 copas.step()
             end
@@ -151,7 +160,7 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                             ["Referer"] = payload.referer or "",
                             ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
                         }
-                        local c, e, h = Http:requestAsync("GET", url, nil, req_headers)
+                        local c, e, h = Http:requestAsync("GET", url, nil, req_headers, { timeout = source.id == "dualeo" and 12 or 20 })
                         if c then
                             content = c
                             headers = h
@@ -186,7 +195,7 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                 end
 
                 if source.id == "dualeo" then
-                    socket.sleep(0.3)
+                    socket.sleep(0.15)
                 end
                 active_downloads = active_downloads - 1
             end)
