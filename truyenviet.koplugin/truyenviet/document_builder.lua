@@ -133,6 +133,13 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
         local downloaded_count = 0
         local max_retries = source.id == "dualeo" and 3 or 3
 
+        -- jitter and batching to avoid short-term rate limits
+        math.randomseed(os.time() % 100000)
+        local min_ms = source.id == "dualeo" and 120 or 30
+        local max_ms = source.id == "dualeo" and 400 or 150
+        local batch_size = source.id == "dualeo" and 7 or 0
+        local batch_pause_sec = source.id == "dualeo" and 0.9 or 0
+
         local chapter_start = os.time()
         local chapter_timeout = source.id == "dualeo" and 120 or 300
 
@@ -156,10 +163,12 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                 
                 for attempt = 1, max_retries do
                     for _, url in ipairs(image.urls) do
-                        local req_headers = (type(source.getImageHeaders) == "function" and source:getImageHeaders()) or {
-                            ["Referer"] = payload.referer or "",
-                            ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                        }
+                        local req_headers = (type(source.getImageHeaders) == "function" and source:getImageHeaders()) or {}
+                        if not req_headers["Referer"] then req_headers["Referer"] = payload.referer or "" end
+                        if not req_headers["Accept"] then req_headers["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" end
+                        req_headers["Connection"] = req_headers["Connection"] or "keep-alive"
+                        req_headers["Accept-Language"] = req_headers["Accept-Language"] or "vi-VN,vi;q=0.9,en;q=0.7"
+
                         local c, e, h = Http:requestAsync("GET", url, nil, req_headers, { timeout = source.id == "dualeo" and 12 or 20 })
                         if c then
                             content = c
@@ -194,11 +203,17 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                     table.insert(failed_images, index)
                 end
 
+                -- randomized small sleep to avoid burst patterns
                 if source.id == "dualeo" then
-                    socket.sleep(0.15)
+                    socket.sleep(math.random(min_ms, max_ms) / 1000)
                 end
                 active_downloads = active_downloads - 1
             end)
+
+            -- batch pause to avoid short-term burst from spawning many requests
+            if source.id == "dualeo" and batch_size > 0 and (index % batch_size) == 0 then
+                socket.sleep(batch_pause_sec)
+            end
         end
 
         while active_downloads > 0 do
