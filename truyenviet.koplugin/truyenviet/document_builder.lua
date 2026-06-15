@@ -126,19 +126,12 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
     local ok, result, result_err = pcall(function()
         local copas = require("copas")
         local active_downloads = 0
-        local max_concurrent = source.id == "dualeo" and 2 or 4
+        local max_concurrent = 4
         local has_error = false
         local archive_err = nil
         local failed_images = {}
         local downloaded_count = 0
-        local max_retries = source.id == "dualeo" and 3 or 3
-
-        -- jitter and batching to avoid short-term rate limits
-        math.randomseed(os.time() % 100000)
-        local min_ms = source.id == "dualeo" and 120 or 30
-        local max_ms = source.id == "dualeo" and 400 or 150
-        local batch_size = source.id == "dualeo" and 7 or 0
-        local batch_pause_sec = source.id == "dualeo" and 0.9 or 0
+        local max_retries = 3
 
         local chapter_start = os.time()
         local chapter_timeout = source.id == "dualeo" and 120 or 300
@@ -203,17 +196,8 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                     table.insert(failed_images, index)
                 end
 
-                -- randomized small sleep to avoid burst patterns
-                if source.id == "dualeo" then
-                    socket.sleep(math.random(min_ms, max_ms) / 1000)
-                end
                 active_downloads = active_downloads - 1
             end)
-
-            -- batch pause to avoid short-term burst from spawning many requests
-            if source.id == "dualeo" and batch_size > 0 and (index % batch_size) == 0 then
-                socket.sleep(batch_pause_sec)
-            end
         end
 
         while active_downloads > 0 do
