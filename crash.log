@@ -1,0 +1,100 @@
+--------- beginning of main
+04-16 10:17:18.669 I/GED     (20727): ged_boost_gpu_freq, level 100, eOrigin 2, final_idx 2, oppidx_max 2, oppidx_min 0
+04-16 10:17:18.674 I/ThridPartyHandwrite(20727): root view is dying,disable handwriting
+04-16 10:17:21.831 W/ActivityThread(20727): handleWindowVisibility: no activity for token android.os.BinderProxy@cb77e7e
+04-16 10:17:21.832 I/EinkAPI (20727): getPackageDpi packageNameorg.koreader.launcher
+04-16 10:17:21.849 I/EinkAPI (20727): getPackageDpi packageNameorg.koreader.launcher
+04-16 10:17:21.858 I/MainActivity(20727): loading libluajit
+04-16 10:17:21.865 I/EinkAPI (20727): getPackageDpi packageNameorg.koreader.launcher
+04-16 10:17:21.895 E/Looper  (20727): Error adding epoll events for fd 68: Operation not permitted
+04-16 10:17:21.896 I/Assets  (20727): loading koreader-monolibtic
+04-16 10:17:21.903 I/DeviceInfo(20727): MANUFACTURER: ireader
+04-16 10:17:21.903 I/DeviceInfo(20727): BRAND       : ireader
+04-16 10:17:21.903 I/DeviceInfo(20727): MODEL       : neo 2
+04-16 10:17:21.903 I/DeviceInfo(20727): DEVICE      : rm06e-ckcw
+04-16 10:17:21.903 I/DeviceInfo(20727): PRODUCT     : rm06e-ckcw
+04-16 10:17:21.903 I/DeviceInfo(20727): HARDWARE    : mt8168
+04-16 10:17:21.925 I/Lights  (20727): Using Generic driver
+04-16 10:17:22.064 I/Assets  (20727): Skip installation for revision v2026.03
+04-16 10:17:22.071 I/KOReader(20727): has monolibtic? yes
+04-16 10:17:22.071 I/KOReader(20727): lib_search_path: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/?
+04-16 10:17:22.071 I/KOReader(20727): lib_basic_format: lib%s.so
+04-16 10:17:22.071 I/KOReader(20727): lib_version_format: lib%s.so
+04-16 10:17:22.072 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [libs/libkoreader-lfs]
+04-16 10:17:22.075 I/KOReader(20727): ffi.load: rt.so.1 (RTLD_GLOBAL)
+04-16 10:17:22.078 I/MainActivity(20727): New intent: Intent { act=android.intent.action.MAIN flg=0x10200000 cmp=org.koreader.launcher/.MainActivity }.action
+04-16 10:17:22.126 I/KOReader(20727): ffi.findlib: utf8proc [3]
+04-16 10:17:22.126 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.169 I/KOReader(20727): ffi.findlib: blitbuffer
+04-16 10:17:22.170 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.179 I/KOReader(20727): ffi.findlib: archive [13]
+04-16 10:17:22.179 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.201 I/KOReader(20727): Android 10 - Q (API 29) - flavor: rocks
+04-16 10:17:22.244 I/KOReader(20727): initializing for device rm06e-ckcw
+04-16 10:17:22.244 I/KOReader(20727): framebuffer resolution: {
+04-16 10:17:22.244 I/KOReader(20727):   h = 1448,
+04-16 10:17:22.244 I/KOReader(20727):   w = 1072
+04-16 10:17:22.244 I/KOReader(20727): } --[[table: 0xd85fb808]]
+04-16 10:17:22.254 I/KOReader(20727): ffi.findlib: wrap-mupdf
+04-16 10:17:22.254 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.262 I/KOReader(20727): ffi.findlib: sqlite3 [0]
+04-16 10:17:22.262 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.264 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [libs/libkoreader-xtext]
+04-16 10:17:22.270 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2---stretched-covers.lua
+04-16 10:17:22.277 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2--disable-all-CB-widgets.lua
+04-16 10:17:22.277 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2--disable-all-PT-widgets.lua
+04-16 10:17:22.278 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2--rounded-covers.lua
+04-16 10:17:22.279 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2--stretched-rounded-covers.lua
+04-16 10:17:22.280 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2--ui-font.lua
+04-16 10:17:22.285 I/KOReader(20727): ffi.findlib: freetype [6]
+04-16 10:17:22.285 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.305 I/KOReader(20727): ffi.findlib: harfbuzz [0]
+04-16 10:17:22.305 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.314 I/KOReader(20727): ffi.findlib: zstd [1]
+04-16 10:17:22.314 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.340 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [libs/libkoreader-cre]
+04-16 10:17:22.439 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-custom-header-footer.lua
+04-16 10:17:22.464 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-menu-size.lua
+04-16 10:17:22.469 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-new-collections-star.lua
+04-16 10:17:22.471 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-new-progress-bar.lua
+04-16 10:17:22.471 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-new-status-icons.lua
+04-16 10:17:22.472 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-pages-badge.lua
+04-16 10:17:22.472 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-percent-badge.lua
+04-16 10:17:22.472 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-rounded-folder-covers.lua
+04-16 10:17:22.477 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-series-badge-numbered.lua
+04-16 10:17:22.477 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/2-series-indicator.lua
+04-16 10:17:22.478 I/KOReader(20727): Applying patch: /storage/emulated/0/koreader/patches/20-faded-finished-books.lua
+04-16 10:17:22.528 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [lpeg]
+04-16 10:17:22.555 I/KOReader(20727): Looking for plugins in directory: plugins
+04-16 10:17:22.557 I/KOReader(20727): Looking for plugins in directory: /storage/emulated/0/koreader/plugins/
+04-16 10:17:22.604 I/KOReader(20727): ffi.findlib: leptonica [6]
+04-16 10:17:22.604 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.604 I/KOReader(20727): ffi.findlib: k2pdfopt [2]
+04-16 10:17:22.604 I/KOReader(20727): ffi.load: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so
+04-16 10:17:22.698 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [socket.score]
+04-16 10:17:22.701 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [mime.mcore]
+04-16 10:17:22.703 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [ssl.core]
+04-16 10:17:22.704 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [ssl.context]
+04-16 10:17:22.704 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [ssl.x509]
+04-16 10:17:22.705 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [ssl.config]
+04-16 10:17:22.755 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [appstore_configuration]
+04-16 10:17:22.780 I/KOReader(20727): Project: Title - Checking requirements in '/storage/emulated/0/koreader'
+04-16 10:17:22.780 W/KOReader(20727): Project: Title - CoverBrowser enabled
+04-16 10:17:22.784 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [rapidjson]
+04-16 10:17:22.787 I/KOReader(20727): setting up __gc proxy
+04-16 10:17:22.811 I/KOReader(20727): Loading Rakuyomi plugin...
+04-16 10:17:22.821 I/KOReader(20727): Requesting to /health-check
+04-16 10:17:22.821 W/KOReader(20792): Error when loading /storage/emulated/0/koreader/plugins//rakuyomi.koplugin/main.lua .../0/koreader/plugins//rakuyomi.koplugin/platform/util.lua:11: failed to execl: No such file or directory
+04-16 10:17:22.867 F/reader.launche(20792): thread.cc:1326] Check failed: FindStackTop() > reinterpret_cast<void*>(tlsPtr_.stack_end) (FindStackTop()=), reinterpret_cast<void*>(tlsPtr_.stack_end)=0xff64c000) 
+04-16 10:17:23.832 I/KOReader(20727): Requesting to /health-check
+04-16 10:17:24.844 I/KOReader(20727): Requesting to /health-check
+04-16 10:17:25.857 I/KOReader(20727): Requesting to /health-check
+04-16 10:17:26.869 I/KOReader(20727): Requesting to /health-check
+04-16 10:17:28.168 I/KOReader(20727): Successfully loaded credentials from zlibrary_credentials.lua
+04-16 10:17:28.168 I/KOReader(20727): Zlibrary:Ota.getCurrentPluginVersion - Attempting to load version via dofile from: /storage/emulated/0/koreader/plugins/annas.koplugin//_meta.lua
+04-16 10:17:28.168 I/KOReader(20727): Zlibrary:Ota.getCurrentPluginVersion - Found version: 0.1.8
+04-16 10:17:28.168 I/KOReader(20727): Zlibrary: Init successful, version is: 0.1.8
+04-16 10:17:28.198 I/KOReader(20727): Aspect ratio control applied successfully
+04-16 10:17:28.200 I/KOReader(20727): package.loadlib: /data/app/org.koreader.launcher-AhKi5jLho0sj8qbpFGXJnA==/lib/arm/libkoreader-monolibtic.so [libs/libkoreader-nnsvg]
+04-16 10:17:28.202 I/KOReader(20727): Loading aspect ratio control (0.67) with SVG rounded corners
+04-16 10:17:28.202 I/KOReader(20727): Aspect ratio control applied successfully

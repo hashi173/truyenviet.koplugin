@@ -1,0 +1,1 @@
+-primary/40 relative isolate lg:active:scale-[0.98] min-h-0 overflow-hidden contain-content" href="/doc-truyen/pham-nhan-tien-duyen"><div class="relative w-full aspect-[5/7] bg-accent overflow-hidden rounded-tl-2xl"><div class="over

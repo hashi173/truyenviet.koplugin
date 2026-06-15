@@ -19,6 +19,7 @@ local SourceRegistry = require("truyenviet/source_registry")
 local Storage = require("truyenviet/storage")
 local StoryResults = require("truyenviet/widgets/story_results")
 local Version = require("truyenviet/version")
+local Debug = require("truyenviet/debugger")
 
 local ListView = Menu:extend{
     is_popout = false,
@@ -1041,7 +1042,7 @@ function Browser:getLocalChapters(story, source)
     return chapters
 end
 
-function Browser:loadStoryPage(story, source, page, on_return_callback, auto_open_chapter)
+function Browser:loadStoryPage(story, source, page, on_return_callback, auto_open_chapter, from_reader)
     local function loadOnline()
         runOnline(function()
             local page_data, err = withLoading(
@@ -1058,7 +1059,7 @@ function Browser:loadStoryPage(story, source, page, on_return_callback, auto_ope
             if auto_open_chapter then
                 local chapter_to_open = type(auto_open_chapter) == "table" and auto_open_chapter or page_data.chapters[1]
                 if chapter_to_open then
-                    self:openChapter(nil, page_data, source, chapter_to_open, on_return_callback)
+                    self:openChapter(nil, page_data, source, chapter_to_open, on_return_callback, false, from_reader)
                 else
                     self:showChapterList(page_data, source, on_return_callback)
                 end
@@ -1089,7 +1090,7 @@ function Browser:loadStoryPage(story, source, page, on_return_callback, auto_ope
             if auto_open_chapter then
                 local chapter_to_open = type(auto_open_chapter) == "table" and auto_open_chapter or page_data.chapters[1]
                 if chapter_to_open then
-                    self:openChapter(nil, page_data, source, chapter_to_open, on_return_callback)
+                    self:openChapter(nil, page_data, source, chapter_to_open, on_return_callback, false, from_reader)
                 else
                     self:showChapterList(page_data, source, on_return_callback)
                 end
@@ -1294,8 +1295,12 @@ function Browser:showChapterList(page_data, source, on_return_callback)
     view = showView(story.title, items, on_return_callback)
 end
 
-function Browser:openChapter(view, page_data, source, chapter, on_return_callback, force)
+function Browser:openChapter(view, page_data, source, chapter, on_return_callback, force, from_reader)
     local story = page_data.story
+
+    local logger = require("logger")
+    logger.info("TruyenViet: openChapter called: url=" .. tostring(chapter.url) .. ", from_reader=" .. tostring(from_reader))
+    Debug.write("Browser: openChapter called: url=" .. tostring(chapter.url) .. ", from_reader=" .. tostring(from_reader))
 
     local next_chapter
     for i, c in ipairs(page_data.chapters) do
@@ -1320,33 +1325,57 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
         end
     end
 
-    local function on_next_chapter()
-        if next_chapter then
-            self:openChapter(nil, page_data, source, next_chapter, on_return_callback)
-        elseif page_data.total_pages > 1 then
-            if source.reversed_chapters and page_data.page > 1 then
-                self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true)
-            elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
-                self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true)
-            else
-                UIManager:show(InfoMessage:new{
-                title = "Truyện Việt",
-                text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
-            end
-        else
-            UIManager:show(InfoMessage:new{
-            title = "Truyện Việt",
-            text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
+    local function on_next_chapter(called_from_reader)
+        local from_reader_flag = (called_from_reader ~= nil) and called_from_reader or from_reader
+        Debug.write("Browser:on_next_chapter triggered, next_chapter=" .. tostring(next_chapter ~= nil) .. ", from_reader=" .. tostring(from_reader_flag))
+        UIManager:nextTick(function()
+            if next_chapter then
+                    if from_reader_flag then
+                        -- Return to plugin UI first, then open next chapter from plugin context
+                        Reader:returnToPlugin(function()
+                            self:openChapter(nil, page_data, source, next_chapter, on_return_callback, false, from_reader_flag)
+                        end)
+                    else
+                        self:openChapter(nil, page_data, source, next_chapter, on_return_callback, false, from_reader_flag)
+                    end
+                elseif page_data.total_pages > 1 then
+                    if source.reversed_chapters and page_data.page > 1 then
+                        if from_reader_flag then
+                            Reader:returnToPlugin(function()
+                                self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true, from_reader_flag)
+                            end)
+                        else
+                            self:loadStoryPage(story, source, page_data.page - 1, on_return_callback, true, from_reader_flag)
+                        end
+                    elseif not source.reversed_chapters and page_data.page < page_data.total_pages then
+                        if from_reader_flag then
+                            Reader:returnToPlugin(function()
+                                self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true, from_reader_flag)
+                            end)
+                        else
+                            self:loadStoryPage(story, source, page_data.page + 1, on_return_callback, true, from_reader_flag)
+                        end
+                    else
+                        UIManager:show(InfoMessage:new{
+                        title = "Truyện Việt",
+                        text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
+                    end
+                else
+                    UIManager:show(InfoMessage:new{
+                    title = "Truyện Việt",
+                    text = "Đã tới chương cuối cùng ở thời điểm hiện tại." })
+                end
+            end)
         end
-    end
 
     local existing = Builder:getExistingPath(source, story, chapter)
     if existing and not force then
         if view then UIManager:close(view) end
         Storage:saveHistory(story, chapter)
+        Debug.write("Browser:existing found, calling Reader:show existing=" .. tostring(existing) .. ", from_reader=" .. tostring(from_reader))
         Reader:show(existing, function()
             self:showChapterList(page_data, source, on_return_callback)
-        end, on_next_chapter)
+            end, on_next_chapter, from_reader)
         return
     end
 
@@ -1402,9 +1431,10 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
 
         if view then UIManager:close(view) end
         Storage:saveHistory(story, chapter)
+        Debug.write("Browser:build completed, path=" .. tostring(path) .. ", from_reader=" .. tostring(from_reader))
         Reader:show(path, function()
             self:showChapterList(page_data, source, on_return_callback)
-        end, on_next_chapter)
+        end, on_next_chapter, from_reader)
     end)
 end
 
@@ -1423,8 +1453,10 @@ function Browser:showChapterActions(view, page_data, source, chapter, on_return_
                             page_data,
                             source,
                             chapter,
-                            on_return_callback
-                        )
+                                    on_return_callback,
+                                    false,
+                                    from_reader
+                                )
                     end)
                 end,
             },
