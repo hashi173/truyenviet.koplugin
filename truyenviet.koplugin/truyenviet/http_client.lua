@@ -8,7 +8,7 @@ local ko_util = require("util")
 local HttpClient = {
     connect_timeout = 15,
     total_timeout = 60,
-    user_agent = "Mozilla/5.0 (Linux; Android 13) KOReader TruyenViet/0.1",
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 }
 
 local function mergeHeaders(extra)

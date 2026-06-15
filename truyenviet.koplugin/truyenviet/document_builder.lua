@@ -5,6 +5,7 @@ local Storage = require("truyenviet/storage")
 local Util = require("truyenviet/helpers")
 local lfs = require("libs/libkoreader-lfs")
 local socket = require("socket")
+local Debug = require("truyenviet/debugger")
 
 local DocumentBuilder = {}
 
@@ -125,12 +126,12 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
     local ok, result, result_err = pcall(function()
         local copas = require("copas")
         local active_downloads = 0
-        local max_concurrent = 4
+        local max_concurrent = source.id == "dualeo" and 1 or 4
         local has_error = false
         local archive_err = nil
         local failed_images = {}
         local downloaded_count = 0
-        local max_retries = source.id == "dualeo" and 3 or 2
+        local max_retries = source.id == "dualeo" and 5 or 3
 
         for index, image in ipairs(payload.images) do
             while active_downloads >= max_concurrent do
@@ -146,10 +147,11 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                 
                 for attempt = 1, max_retries do
                     for _, url in ipairs(image.urls) do
-                        local c, e, h = Http:requestAsync("GET", url, nil, {
+                        local req_headers = (type(source.getImageHeaders) == "function" and source:getImageHeaders()) or {
                             ["Referer"] = payload.referer or "",
                             ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                        })
+                        }
+                        local c, e, h = Http:requestAsync("GET", url, nil, req_headers)
                         if c then
                             content = c
                             headers = h
@@ -157,6 +159,7 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                             break
                         end
                         last_error = e
+                        Debug.write("DocumentBuilder:buildComic download failed idx=" .. tostring(index) .. " url=" .. tostring(url) .. " err=" .. tostring(e))
                     end
                     
                     if content then
@@ -178,9 +181,13 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                         downloaded_count = downloaded_count + 1
                     end
                 else
+                    Debug.write("DocumentBuilder:buildComic unsupported/failed idx=" .. tostring(index) .. " final_url=" .. tostring(final_url) .. " last_error=" .. tostring(last_error))
                     table.insert(failed_images, index)
                 end
 
+                if source.id == "dualeo" then
+                    socket.sleep(0.3)
+                end
                 active_downloads = active_downloads - 1
             end)
         end

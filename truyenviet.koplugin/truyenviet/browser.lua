@@ -1038,7 +1038,15 @@ function Browser:getLocalChapters(story, source)
         end
         return a.title < b.title
     end)
-    
+
+    if source.reversed_chapters then
+        local rev = {}
+        for i = #chapters, 1, -1 do
+            table.insert(rev, chapters[i])
+        end
+        chapters = rev
+    end
+
     return chapters
 end
 
