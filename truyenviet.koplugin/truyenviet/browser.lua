@@ -1164,41 +1164,65 @@ end
 
 function Browser:confirmDownloadChapters(view, page_data, source)
     local story = page_data.story
-    local pending = ChapterDownloader:listPending(
-        source,
-        story,
-        page_data.chapters
-    )
-    local already_downloaded = #page_data.chapters - #pending
-    if #pending == 0 then
-        UIManager:show(InfoMessage:new{
-            title = "Truyện Việt",
-            text = "Các chương ở trang mục lục này đã được tải.",
-        })
-        return
-    end
-
-    local warning = string.format(
-        "Tải %d chương chưa có ở trang mục lục hiện tại?",
-        #pending
-    )
+    local warning = "Tiến hành tải tất cả các chương chưa có của truyện này?"
     if source.kind == "comic" then
-        warning = warning
-            .. "\n\nTruyện tranh có thể tốn nhiều thời gian và dung lượng lưu trữ."
+        warning = warning .. "\n\nTruyện tranh có thể tốn nhiều thời gian và dung lượng lưu trữ."
     end
     UIManager:show(ConfirmBox:new{
-            title = "Truyện Việt",
-            text = warning,
+        title = "Truyện Việt",
+        text = warning,
         ok_text = "Tải các chương",
         ok_callback = function()
             UIManager:scheduleIn(0, function()
-                self:downloadChapters(
-                    view,
-                    page_data,
-                    source,
-                    pending,
-                    already_downloaded
-                )
+                if page_data.total_pages > 1 then
+                    runOnline(function()
+                        local all_chapters = {}
+                        local fetch_ok = false
+                        local _, err = withLoading("Đang lấy danh sách toàn bộ chương...", function()
+                            for p = 1, page_data.total_pages do
+                                local p_data = source:getStoryPage(story, p)
+                                if p_data and p_data.chapters then
+                                    for _, c in ipairs(p_data.chapters) do
+                                        table.insert(all_chapters, c)
+                                    end
+                                else
+                                    if not p_data or not p_data.chapters or #p_data.chapters == 0 then
+                                        break
+                                    end
+                                end
+                            end
+                            local Util = require("truyenviet/helpers")
+                            all_chapters = Util.uniqueBy(all_chapters, "url")
+                            fetch_ok = true
+                            return true
+                        end)
+                        if fetch_ok then
+                            local pending = ChapterDownloader:listPending(source, story, all_chapters)
+                            local already_downloaded = #all_chapters - #pending
+                            if #pending == 0 then
+                                UIManager:show(InfoMessage:new{
+                                    title = "Truyện Việt",
+                                    text = "Tất cả các chương đã được tải.",
+                                })
+                                return
+                            end
+                            self:downloadChapters(view, {story = story, chapters = all_chapters, page = 1, total_pages = 1}, source, pending, already_downloaded)
+                        else
+                            showError(err or "Lỗi khi lấy danh sách chương")
+                        end
+                    end)
+                else
+                    local pending = ChapterDownloader:listPending(source, story, page_data.chapters)
+                    local already_downloaded = #page_data.chapters - #pending
+                    if #pending == 0 then
+                        UIManager:show(InfoMessage:new{
+                            title = "Truyện Việt",
+                            text = "Tất cả các chương đã được tải.",
+                        })
+                        return
+                    end
+                    self:downloadChapters(view, page_data, source, pending, already_downloaded)
+                end
             end)
         end,
     })
@@ -1225,17 +1249,7 @@ function Browser:showChapterList(page_data, source, on_return_callback)
 
     if #page_data.chapters > 0 then
         table.insert(items, {
-            text = "Tải các chương ở trang này",
-            mandatory_func = function()
-                return string.format(
-                    "%d chưa tải",
-                    #ChapterDownloader:listPending(
-                        source,
-                        story,
-                        page_data.chapters
-                    )
-                )
-            end,
+            text = "Tải tất cả các chương",
             callback = function()
                 self:confirmDownloadChapters(view, page_data, source)
             end,

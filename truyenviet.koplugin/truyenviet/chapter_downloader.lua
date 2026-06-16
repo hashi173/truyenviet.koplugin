@@ -26,49 +26,116 @@ function ChapterDownloader:download(source, story, chapters)
         errors = {},
     }
 
-    for _, chapter in ipairs(chapters or {}) do
-        if Storage:isDownloaded(source, story, chapter) then
-            result.skipped = result.skipped + 1
-        else
-            local ok, payload, fetch_err = pcall(
-                source.getChapter,
-                source,
-                chapter
-            )
-            if not ok then
-                fetch_err = payload
-                payload = nil
-            end
-
-            local path
-            local build_err
-            if payload then
-                ok, path, build_err = pcall(
-                    Builder.build,
-                    Builder,
+    if source.kind == "comic" or type(source.getChapterAsync) ~= "function" then
+        for _, chapter in ipairs(chapters or {}) do
+            if Storage:isDownloaded(source, story, chapter) then
+                result.skipped = result.skipped + 1
+            else
+                local ok, payload, fetch_err = pcall(
+                    source.getChapter,
                     source,
-                    story,
-                    chapter,
-                    payload
+                    chapter
                 )
                 if not ok then
-                    build_err = path
-                    path = nil
+                    fetch_err = payload
+                    payload = nil
+                end
+
+                local path
+                local build_err
+                if payload then
+                    ok, path, build_err = pcall(
+                        Builder.build,
+                        Builder,
+                        source,
+                        story,
+                        chapter,
+                        payload
+                    )
+                    if not ok then
+                        build_err = path
+                        path = nil
+                    end
+                end
+
+                if path then
+                    result.downloaded = result.downloaded + 1
+                else
+                    os.remove(Storage:getChapterPath(source, story, chapter) .. ".part")
+                    table.insert(result.errors, string.format(
+                        "%s: %s",
+                        chapter.title,
+                        tostring(fetch_err or build_err or "lỗi không xác định")
+                    ))
                 end
             end
-
-            if path then
-                result.downloaded = result.downloaded + 1
-            else
-                os.remove(Storage:getChapterPath(source, story, chapter) .. ".part")
-                table.insert(result.errors, string.format(
-                    "%s: %s",
-                    chapter.title,
-                    tostring(fetch_err or build_err or "lỗi không xác định")
-                ))
-            end
+            collectgarbage()
         end
-        collectgarbage()
+    else
+        local copas = require("copas")
+        local active_downloads = 0
+        local max_concurrent = 10
+
+        for _, chapter in ipairs(chapters or {}) do
+            if Storage:isDownloaded(source, story, chapter) then
+                result.skipped = result.skipped + 1
+            else
+                while active_downloads >= max_concurrent do
+                    copas.step()
+                end
+                active_downloads = active_downloads + 1
+
+                copas.addthread(function()
+                    local ok, payload, fetch_err = pcall(
+                        source.getChapterAsync,
+                        source,
+                        chapter
+                    )
+                    if not ok then
+                        fetch_err = payload
+                        payload = nil
+                    end
+
+                    local path
+                    local build_err
+                    if payload then
+                        ok, path, build_err = pcall(
+                            Builder.build,
+                            Builder,
+                            source,
+                            story,
+                            chapter,
+                            payload
+                        )
+                        if not ok then
+                            build_err = path
+                            path = nil
+                        end
+                    end
+
+                    if path then
+                        result.downloaded = result.downloaded + 1
+                    else
+                        os.remove(Storage:getChapterPath(source, story, chapter) .. ".part")
+                        table.insert(result.errors, string.format(
+                            "%s: %s",
+                            chapter.title,
+                            tostring(fetch_err or build_err or "lỗi không xác định")
+                        ))
+                    end
+                    active_downloads = active_downloads - 1
+                end)
+            end
+            
+            if active_downloads > 0 then
+                copas.step()
+            end
+            collectgarbage()
+        end
+
+        while active_downloads > 0 do
+            copas.step()
+        end
     end
 
     return result

@@ -190,4 +190,12 @@ function Source:getChapter(chapter)
     return self:parseChapter(html, chapter)
 end
 
+function Source:getChapterAsync(chapter)
+    local html, err = Http:requestAsync("GET", chapter.url)
+    if not html then
+        return nil, err
+    end
+    return self:parseChapter(html, chapter)
+end
+
 return Source
