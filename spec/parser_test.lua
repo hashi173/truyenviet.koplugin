@@ -71,7 +71,6 @@ local TruyenFull = require("truyenviet/sources/truyenfull")
 local TruyenQQ = require("truyenviet/sources/truyenqq")
 local DuaLeo = require("truyenviet/sources/dualeo")
 local TruyenDich = require("truyenviet/sources/truyendich")
-local MangaDex = require("truyenviet/sources/mangadex")
 local Cbunu = require("truyenviet/sources/cbunu")
 local Haccbl = require("truyenviet/sources/haccbl")
 local SearchService = require("truyenviet/search_service")
@@ -299,7 +298,7 @@ assertEqual("Manhwa", dualeo_details.genres[1], "DuaLeo detail genre")
 
 local dualeo_story = {
     title = "Vết Tích Của Ánh Dương",
-    url = "https://dualeotruyenbs.com/truyen-tranh/anh-duong",
+    url = "https://dualeotruyenpt.com/truyen-tranh/anh-duong",
 }
 local dualeo_detail = [[
   <a href="/truyen-tranh/anh-duong/chapter-1">Đọc từ đầu</a>
@@ -326,32 +325,12 @@ local dualeo_payload = assert(DuaLeo:parseChapter(
 ))
 assertEqual(2, #dualeo_payload.images, "DuaLeo image count")
 assertEqual(
-    "https://dualeotruyenbs.com/uploads/2.webp",
+    "https://dualeotruyenpt.com/uploads/2.webp",
     dualeo_payload.images[2].urls[1],
     "DuaLeo lazy image URL"
 )
 
-mock_json.mangadex_completed = {
-    result = "ok",
-    data = {},
-    total = 0,
-    limit = 20,
-}
-local captured_mangadex_url
-Http.get = function(_, url)
-    captured_mangadex_url = url
-    return "mangadex_completed"
-end
-local mangadex_ok, mangadex_listing = pcall(function()
-    return MangaDex:getCompleted(1)
-end)
-assertEqual(true, mangadex_ok, "MangaDex completed URL does not crash")
-assertEqual(0, #mangadex_listing.stories, "MangaDex parses empty response")
-assertContains(
-    captured_mangadex_url,
-    "status%5B%5D=completed",
-    "MangaDex keeps encoded array params"
-)
+
 
 local cbunu_listing = Cbunu:parseListing([[
   <ul class="list-stories grid-6">
@@ -464,11 +443,11 @@ local ranked = SearchService:search("pham nhan", {
 assertEqual("Phàm Nhân", ranked[1].title, "Search ranks exact title first")
 assertEqual(8, #Util.stableHash("https://example.com/cover.webp"), "Cover cache hash")
 
-assertEqual(7, #SourceRegistry:listAll(), "Registry keeps seven built-in sources")
+assertEqual(6, #SourceRegistry:listAll(), "Registry keeps six built-in sources")
 assertEqual(true, SourceRegistry:isEnabled("dualeo"), "DuaLeo starts enabled")
 assertEqual(true, SourceRegistry:setEnabled("dualeo", false), "DuaLeo can be disabled")
 assertEqual(false, SourceRegistry:isEnabled("dualeo"), "DuaLeo disabled state")
-assertEqual(6, #SourceRegistry:listEnabled(), "Disabled source leaves enabled list")
+assertEqual(5, #SourceRegistry:listEnabled(), "Disabled source leaves enabled list")
 assertEqual(true, SourceRegistry:setEnabled("dualeo", true), "DuaLeo can be enabled again")
 assertEqual(true, SourceRegistry:isEnabled("dualeo"), "DuaLeo enabled state restored")
 

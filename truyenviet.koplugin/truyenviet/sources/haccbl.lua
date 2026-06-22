@@ -366,7 +366,61 @@ function Source:parseChapter(html, chapter)
                         int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *outm, int *outl);
                     ]]
                 end)
-                local crypto_status, libcrypto = pcall(ffi.load, "crypto")
+                local crypto_status, libcrypto
+                local lib_names = {
+                    "crypto",
+                    "libcrypto",
+                    "libcrypto.so",
+                    "libcrypto.so.3",
+                    "libcrypto.so.1.1",
+                    "libcrypto.so.1.0.0",
+                    "libcrypto.so.56",
+                    "libcrypto.so.55",
+                    "libcrypto.so.48",
+                    "libcrypto.so.47",
+                    "libcrypto.so.46",
+                    "libcrypto.so.45",
+                    "libcrypto.so.44",
+                    "libcrypto.so.43",
+                    "libcrypto.so.42",
+                    "libcrypto.so.41",
+                    "libcrypto.so.39",
+                    "libcrypto.so.38",
+                    "libcrypto.so.37",
+                    "libcrypto.so.35",
+                    "libcrypto.so.1.0.2",
+                    "libcrypto.so.1.0.1",
+                    "libs/libcrypto.so",
+                    "libs/libcrypto.so.3",
+                    "libs/libcrypto.so.1.1",
+                    "libs/libcrypto.so.56",
+                    "libs/libcrypto.so.55",
+                    "libs/libcrypto.so.1.0.0",
+                    "libcrypto-3-x64",
+                    "libcrypto-1_1-x64",
+                    "libcrypto-3",
+                    "libcrypto-1_1",
+                    "crypto-3",
+                    "crypto-1_1",
+                    "libcrypto-3.dll",
+                    "libcrypto-1_1.dll",
+                    "ssl",
+                    "libssl",
+                    "libssl.so",
+                    "libs/libssl.so",
+                }
+                for _, name in ipairs(lib_names) do
+                    crypto_status, libcrypto = pcall(ffi.load, name)
+                    if crypto_status and libcrypto then
+                        break
+                    end
+                    if ffi.loadlib then
+                        crypto_status, libcrypto = pcall(ffi.loadlib, name)
+                        if crypto_status and libcrypto then
+                            break
+                        end
+                    end
+                end
                 if crypto_status and libcrypto then
                     local function hex2bin(hexstr)
                         return (hexstr:gsub('..', function(cc)

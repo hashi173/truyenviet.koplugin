@@ -9,10 +9,14 @@ local Source = {
     base_url = "https://truyendich.ai",
 }
 
-function Source:getCoverHeaders()
+local function requestHeaders(referer)
     return {
-        ["Referer"] = self.base_url .. "/",
+        ["Referer"] = referer or "https://truyendich.ai/",
     }
+end
+
+function Source:getCoverHeaders()
+    return requestHeaders()
 end
 
 function Source:parseSearch(html)
@@ -50,7 +54,7 @@ end
 
 function Source:search(query)
     local encoded = ko_util.urlEncode(query):gsub("%%20", "+")
-    local html, err = Http:get(self.base_url .. "/tim-kiem?keyword=" .. encoded)
+    local html, err = Http:get(self.base_url .. "/tim-kiem?keyword=" .. encoded, requestHeaders())
     if not html then
         return nil, err
     end
@@ -62,7 +66,7 @@ function Source:parseListing(html, page)
         stories = self:parseSearch(html),
         genres = Util.parseGenres(html, self.base_url),
         page = page or 1,
-        total_pages = 9999,
+        total_pages = Util.maxPage(html, page or 1),
     }
 end
 
@@ -72,7 +76,7 @@ function Source:getCompleted(page)
     if page > 1 then
         url = url .. "?page=" .. page
     end
-    local html, err = Http:get(url)
+    local html, err = Http:get(url, requestHeaders())
     if not html then
         return nil, err
     end
@@ -87,7 +91,7 @@ function Source:getGenre(genre, page)
     if page > 1 then
         url = url .. "?page=" .. page
     end
-    local html, err = Http:get(url)
+    local html, err = Http:get(url, requestHeaders())
     if not html then
         return nil, err
     end
@@ -110,7 +114,7 @@ function Source:parseStoryDetails(html)
 end
 
 function Source:getStoryDetails(story)
-    local html, err = Http:get(story.url)
+    local html, err = Http:get(story.url, requestHeaders())
     if not html then
         return nil, err
     end
@@ -137,12 +141,17 @@ function Source:parseStoryPage(html, story, page)
         end
     end
 
+    local total_pages = 1
+    for p_num in html:gmatch(slug .. "/trang%-(%d+)") do
+        total_pages = math.max(total_pages, tonumber(p_num) or 1)
+    end
+
     story.details = self:parseStoryDetails(html)
     return {
         story = story,
         chapters = Util.uniqueBy(chapters, "url"),
         page = page or 1,
-        total_pages = 9999,
+        total_pages = total_pages,
     }
 end
 
@@ -152,7 +161,7 @@ function Source:getStoryPage(story, page)
     if page > 1 then
         page_url = page_url .. "/trang-" .. page
     end
-    local html, err = Http:get(page_url)
+    local html, err = Http:get(page_url, requestHeaders(story.url))
     if not html then
         return nil, err
     end
@@ -183,7 +192,7 @@ function Source:parseChapter(html, chapter)
 end
 
 function Source:getChapter(chapter)
-    local html, err = Http:get(chapter.url)
+    local html, err = Http:get(chapter.url, requestHeaders(chapter.story_url or chapter.url))
     if not html then
         return nil, err
     end
@@ -191,7 +200,7 @@ function Source:getChapter(chapter)
 end
 
 function Source:getChapterAsync(chapter)
-    local html, err = Http:requestAsync("GET", chapter.url)
+    local html, err = Http:requestAsync("GET", chapter.url, nil, requestHeaders(chapter.story_url or chapter.url))
     if not html then
         return nil, err
     end
