@@ -34,7 +34,7 @@ _M.USERAGENT = socket._VERSION
 
 -- Default settings for SSL
 _M.SSLPORT = 443
-_M.SSLPROTOCOL = "tlsv1_2"
+_M.SSLPROTOCOL = "any"
 _M.SSLOPTIONS  = "all"
 _M.SSLVERIFY   = "none"
 _M.SSLSNISTRICT = false

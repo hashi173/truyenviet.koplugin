@@ -344,28 +344,44 @@ function Source:parseChapter(html, chapter)
         local saltHex = content:match('"salt"%s*:%s*"([^"]+)"')
 
         if keyStrBase64 and ciphertext and ivHex and saltHex then
+            local Debug = require("truyenviet/debugger")
+            Debug.write("[haccbl] InitMangaEncryptedChapter match: " .. keyStrBase64)
             local status, ffi = pcall(require, "ffi")
             if status and ffi then
-                pcall(function()
-                    ffi.cdef[[
-                        typedef struct evp_md_st EVP_MD;
-                        typedef struct evp_cipher_st EVP_CIPHER;
-                        const EVP_MD *EVP_sha512(void);
-                        int PKCS5_PBKDF2_HMAC(const char *pass, int passlen,
-                                              const unsigned char *salt, int saltlen, int iter,
-                                              const EVP_MD *digest,
-                                              int keylen, unsigned char *out);
-                        const EVP_CIPHER *EVP_aes_256_cbc(void);
-                        typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;
-                        EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void);
-                        void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *c);
-                        int EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher, void *impl,
-                                               const unsigned char *key, const unsigned char *iv);
-                        int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl,
-                                              const unsigned char *in_buf, int inl);
-                        int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *outm, int *outl);
-                    ]]
-                end)
+                Debug.write("[haccbl] ffi loaded successfully")
+                local function safe_cdef(decl)
+                    local ok, err = pcall(function() ffi.cdef(decl) end)
+                    if not ok then
+                        Debug.write("[haccbl] safe_cdef failed: " .. tostring(err) .. " for: " .. decl)
+                    end
+                end
+                safe_cdef("typedef struct evp_md_st EVP_MD;")
+                safe_cdef("typedef struct evp_cipher_st EVP_CIPHER;")
+                safe_cdef("const EVP_MD *EVP_sha512(void);")
+                safe_cdef([[
+                    int PKCS5_PBKDF2_HMAC(const char *pass, int passlen,
+                                          const unsigned char *salt, int saltlen, int iter,
+                                          const EVP_MD *digest,
+                                          int keylen, unsigned char *out);
+                ]])
+                safe_cdef([[
+                    unsigned char *HMAC(const EVP_MD *evp_md, const void *key, int key_len,
+                                        const unsigned char *d, unsigned long n, unsigned char *md,
+                                        unsigned int *md_len);
+                ]])
+                safe_cdef("const EVP_CIPHER *EVP_aes_256_cbc(void);")
+                safe_cdef("typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;")
+                safe_cdef("EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void);")
+                safe_cdef("void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *c);")
+                safe_cdef([[
+                    int EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher, void *impl,
+                                           const unsigned char *key, const unsigned char *iv);
+                ]])
+                safe_cdef([[
+                    int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl,
+                                          const unsigned char *in_buf, int inl);
+                ]])
+                safe_cdef("int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *outm, int *outl);")
                 local crypto_status, libcrypto
                 local lib_names = {
                     "crypto",
@@ -396,6 +412,8 @@ function Source:parseChapter(html, chapter)
                     "libs/libcrypto.so.56",
                     "libs/libcrypto.so.55",
                     "libs/libcrypto.so.1.0.0",
+                    "libs/libcrypto-3-x64.dll",
+                    "libs/libcrypto-1_1-x64.dll",
                     "libcrypto-3-x64",
                     "libcrypto-1_1-x64",
                     "libcrypto-3",
@@ -409,64 +427,182 @@ function Source:parseChapter(html, chapter)
                     "libssl.so",
                     "libs/libssl.so",
                 }
+                local ok_req_crypto, req_crypto = pcall(require, "crypto")
+                if ok_req_crypto and type(req_crypto) == "table" then
+                    local keys = {}
+                    for k, v in pairs(req_crypto) do table.insert(keys, tostring(k)) end
+                    Debug.write("[haccbl] require('crypto') found. Keys: " .. table.concat(keys, ", "))
+                else
+                    Debug.write("[haccbl] require('crypto') NOT found or not a table: " .. tostring(req_crypto))
+                end
+
+                local ok_ffi_c, err_ffi_c = pcall(function() return ffi.C.EVP_sha512 end)
+                Debug.write("[haccbl] ffi.C.EVP_sha512 available? " .. tostring(ok_ffi_c) .. " err: " .. tostring(err_ffi_c))
+
                 for _, name in ipairs(lib_names) do
+                    local loaded_via = nil
                     crypto_status, libcrypto = pcall(ffi.load, name)
                     if crypto_status and libcrypto then
-                        break
-                    end
-                    if ffi.loadlib then
-                        crypto_status, libcrypto = pcall(ffi.loadlib, name)
-                        if crypto_status and libcrypto then
-                            break
-                        end
-                    end
-                end
-                if crypto_status and libcrypto then
-                    local function hex2bin(hexstr)
-                        return (hexstr:gsub('..', function(cc)
-                            return string.char(tonumber(cc, 16))
-                        end))
-                    end
-
-                    local function base64_decode(data)
-                        local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-                        data = string.gsub(data, '[^'..b..'=]', '')
-                        return (data:gsub('.', function(x)
-                            if (x == '=') then return '' end
-                            local r,f='',(b:find(x)-1)
-                            for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
-                            return r;
-                        end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-                            if (#x ~= 8) then return '' end
-                            local c=0
-                            for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
-                            return string.char(c)
-                        end))
-                    end
-
-                    local keyStr = base64_decode(keyStrBase64)
-                    local salt = hex2bin(saltHex)
-                    local iv = hex2bin(ivHex)
-                    local cipherbin = base64_decode(ciphertext)
-
-                    local derivedKey = ffi.new("unsigned char[32]")
-                    local res = libcrypto.PKCS5_PBKDF2_HMAC(keyStr, #keyStr, salt, #salt, 999, libcrypto.EVP_sha512(), 32, derivedKey)
-                    if res == 1 then
-                        local ctx = libcrypto.EVP_CIPHER_CTX_new()
-                        if ctx ~= nil then
-                            libcrypto.EVP_DecryptInit_ex(ctx, libcrypto.EVP_aes_256_cbc(), nil, derivedKey, iv)
-                            local out = ffi.new("unsigned char[?]", #cipherbin + 32)
-                            local outl = ffi.new("int[1]")
-                            local outl2 = ffi.new("int[1]")
-                            libcrypto.EVP_DecryptUpdate(ctx, out, outl, cipherbin, #cipherbin)
-                            local final_res = libcrypto.EVP_DecryptFinal_ex(ctx, out + outl[0], outl2)
-                            if final_res == 1 then
-                                content = ffi.string(out, outl[0] + outl2[0])
+                        loaded_via = "load"
+                    else
+                        if ffi.loadlib then
+                            crypto_status, libcrypto = pcall(ffi.loadlib, name)
+                            if crypto_status and libcrypto then
+                                loaded_via = "loadlib"
                             end
-                            libcrypto.EVP_CIPHER_CTX_free(ctx)
+                        end
+                    end
+                    
+                    if loaded_via then
+                        local ok_sha, err_sha = pcall(function() return libcrypto.EVP_sha512 end)
+                        local ok_hmac, err_hmac = pcall(function() return libcrypto.HMAC end)
+                        local ok_pb, err_pb = pcall(function() return libcrypto.PKCS5_PBKDF2_HMAC end)
+                        Debug.write(string.format("[haccbl] Loaded %s via %s: type=%s, EVP_sha512=%s (%s), HMAC=%s (%s), PKCS5_PBKDF2_HMAC=%s (%s)",
+                            name, loaded_via, type(libcrypto),
+                            tostring(ok_sha), tostring(err_sha),
+                            tostring(ok_hmac), tostring(err_hmac),
+                            tostring(ok_pb), tostring(err_pb)
+                        ))
+                        
+                        local has_min_symbols = (ok_sha and ok_hmac) or ok_pb
+                        if has_min_symbols then
+                            break
+                        else
+                            libcrypto = nil
+                            crypto_status = false
                         end
                     end
                 end
+                local function hex2bin(hexstr)
+                    return (hexstr:gsub('..', function(cc)
+                        return string.char(tonumber(cc, 16))
+                    end))
+                end
+
+                local function base64_decode(data)
+                    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+                    data = string.gsub(data, '[^'..b..'=]', '')
+                    return (data:gsub('.', function(x)
+                        if (x == '=') then return '' end
+                        local r,f='',(b:find(x)-1)
+                        for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+                        return r;
+                    end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+                        if (#x ~= 8) then return '' end
+                        local c=0
+                        for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+                        return string.char(c)
+                    end))
+                end
+
+                local keyStr = base64_decode(keyStrBase64)
+                local salt = hex2bin(saltHex)
+                local iv = hex2bin(ivHex)
+                local cipherbin = base64_decode(ciphertext)
+                local decrypt_ok = false
+
+                if crypto_status and libcrypto then
+                    Debug.write("[haccbl] Using libcrypto pointer: " .. tostring(libcrypto))
+                    local derivedKey
+                    local has_pbkdf2, err_pbkdf2 = pcall(function() return libcrypto.PKCS5_PBKDF2_HMAC end)
+                    if has_pbkdf2 then
+                        derivedKey = ffi.new("unsigned char[32]")
+                        local res = libcrypto.PKCS5_PBKDF2_HMAC(keyStr, #keyStr, salt, #salt, 999, libcrypto.EVP_sha512(), 32, derivedKey)
+                        if res == 1 then
+                            local decrypt_res, decrypt_err = pcall(function()
+                                local ctx = libcrypto.EVP_CIPHER_CTX_new()
+                                if ctx ~= nil then
+                                    libcrypto.EVP_DecryptInit_ex(ctx, libcrypto.EVP_aes_256_cbc(), nil, derivedKey, iv)
+                                    local out = ffi.new("unsigned char[?]", #cipherbin + 32)
+                                    local outl = ffi.new("int[1]")
+                                    local outl2 = ffi.new("int[1]")
+                                    libcrypto.EVP_DecryptUpdate(ctx, out, outl, cipherbin, #cipherbin)
+                                    if libcrypto.EVP_DecryptFinal_ex(ctx, out + outl[0], outl2) == 1 then
+                                        content = ffi.string(out, outl[0] + outl2[0])
+                                        decrypt_ok = true
+                                        Debug.write("[haccbl] native decrypt successful! content len: " .. #content)
+                                    end
+                                    libcrypto.EVP_CIPHER_CTX_free(ctx)
+                                end
+                            end)
+                        end
+                    end
+                end
+
+                if not decrypt_ok then
+                    Debug.write("[haccbl] Falling back to pure lua pbkdf2 and aes")
+                    local fallback_ok, fallback_err = pcall(function()
+                        local bit = require("bit")
+                        local current_dir = debug.getinfo(1, "S").source:match("^@?(.*[/\\])")
+                        if not string.find(package.path, "aeslua[/\\]src[/\\]%?%.lua", 1, true) then
+                            package.path = package.path .. ";" .. current_dir .. "aeslua/src/?.lua;" .. current_dir .. "?.lua"
+                        end
+                        
+                        local sha2 = require("sha2")
+                        local aeslua_main = require("aeslua")
+                        local ciphermode = require("aeslua.ciphermode")
+                        local util = require("aeslua.util")
+                        
+                        local hLen = 64
+                        local l = math.ceil(32 / hLen)
+                        local derivedKeyStr = ""
+                        
+                        for i = 1, l do
+                            local i_bin = string.char(
+                                bit.rshift(i, 24) % 256,
+                                bit.rshift(i, 16) % 256,
+                                bit.rshift(i, 8) % 256,
+                                i % 256
+                            )
+                            
+                            local u_input = salt .. i_bin
+                            local u_in_hex = sha2.hmac(sha2.sha512, keyStr, u_input)
+                            local u_in_bin = hex2bin(u_in_hex)
+                            local t_bin = u_in_bin
+                            
+                            for j = 2, 999 do
+                                u_in_hex = sha2.hmac(sha2.sha512, keyStr, u_in_bin)
+                                u_in_bin = hex2bin(u_in_hex)
+                                
+                                local new_t_bin = {}
+                                for k = 1, 64 do
+                                    new_t_bin[k] = string.char(bit.bxor(string.byte(t_bin, k), string.byte(u_in_bin, k)))
+                                end
+                                t_bin = table.concat(new_t_bin)
+                            end
+                            
+                            derivedKeyStr = derivedKeyStr .. t_bin
+                        end
+                        
+                        local derivedKeyStr32 = string.sub(derivedKeyStr, 1, 32)
+                        local key_table = {string.byte(derivedKeyStr32, 1, 32)}
+                        local iv_table = {string.byte(iv, 1, 16)}
+                        
+                        local plain = ciphermode.decryptString(key_table, cipherbin, ciphermode.decryptCBC, iv_table)
+                        
+                        local function pkcs7_unpad(data)
+                            if #data == 0 then return nil end
+                            local pad_len = string.byte(data, #data)
+                            if pad_len > 0 and pad_len <= 16 then
+                                return string.sub(data, 1, #data - pad_len)
+                            end
+                            return data
+                        end
+                        
+                        local unpadded = pkcs7_unpad(plain)
+                        if unpadded then
+                            content = unpadded
+                            decrypt_ok = true
+                        end
+                    end)
+                    if fallback_ok and decrypt_ok then
+                        Debug.write("[haccbl] pure lua pbkdf2 and aes success! content len: " .. #content)
+                    else
+                        Debug.write("[haccbl] pure lua pbkdf2 or aes failed: " .. tostring(fallback_err))
+                    end
+                end
+            else
+                Debug.write("[haccbl] status is false or ffi is nil: status=" .. tostring(status))
             end
         end
 
