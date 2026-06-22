@@ -1,0 +1,83 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0* Host cbunu.com:443 was resolved.
+* IPv6: 2606:4700:3032::ac43:b352, 2606:4700:3033::6815:43b5
+* IPv4: 104.21.67.181, 172.67.179.82
+*   Trying 104.21.67.181:443...
+* Connected to cbunu.com (104.21.67.181) port 443
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+*  CAfile: /etc/ssl/certs/ca-certificates.crt
+*  CApath: /etc/ssl/certs
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* TLSv1.3 (IN), TLS handshake, Encrypted Extensions (8):
+{ [19 bytes data]
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [2525 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [78 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [52 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [52 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384 / X25519 / id-ecPublicKey
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: CN=cbunu.com
+*  start date: May 29 20:19:15 2026 GMT
+*  expire date: Aug 27 21:17:19 2026 GMT
+*  subjectAltName: host "cbunu.com" matched cert's "cbunu.com"
+*  issuer: C=US; O=Google Trust Services; CN=WE1
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type EC/prime256v1 (256/128 Bits/secBits), signed using ecdsa-with-SHA256
+*   Certificate level 1: Public key type EC/prime256v1 (256/128 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 2: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+} [5 bytes data]
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://cbunu.com/truyen-tranh/end-scoop-199-chap-78.html
+* [HTTP/2] [1] [:method: POST]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: cbunu.com]
+* [HTTP/2] [1] [:path: /truyen-tranh/end-scoop-199-chap-78.html]
+* [HTTP/2] [1] [user-agent: curl/8.5.0]
+* [HTTP/2] [1] [accept: */*]
+* [HTTP/2] [1] [content-length: 17]
+* [HTTP/2] [1] [content-type: application/x-www-form-urlencoded]
+} [5 bytes data]
+> POST /truyen-tranh/end-scoop-199-chap-78.html HTTP/2
+> Host: cbunu.com
+> User-Agent: curl/8.5.0
+> Accept: */*
+> Content-Length: 17
+> Content-Type: application/x-www-form-urlencoded
+> 
+} [17 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [230 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [230 bytes data]
+* old SSL session ID is stale, removing
+{ [5 bytes data]
+100    17    0     0  100    17      0     16  0:00:01  0:00:01 --:--:--    16< HTTP/2 302 
+< date: Sun, 21 Jun 2026 16:34:55 GMT
+< content-type: text/html; charset=UTF-8
+< server: cloudflare
+< set-cookie: __access_pass_one_time_2=12345; expires=Sun, 21-Jun-2026 16:49:55 GMT; Max-Age=900; path=/
+< location: /truyen-tranh/end-scoop-199-chap-78.html
+< cache-control: max-age=172800
+< expires: Tue, 23 Jun 2026 16:34:55 GMT
+< x-xss-protection: 1; mode=block
+< nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+< cf-cache-status: DYNAMIC
+< report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=DugxWL3%2FcZqwwUgEWJspDy9AKVqFhWoWvIrsWJzMzjS2vSgSM8S2xKtlHN0bUeOLsoLRXBpCAJscNuYAhsHNIVA4e5ds60xu3qk0yZAfLfIsyQFRCdR8WZMkykw%3D"}]}
+< cf-ray: a0f46c671d140e6c-AMS
+< alt-svc: h3=":443"; ma=86400
+< 
+100    17    0     0  100    17      0     13  0:00:01  0:00:01 --:--:--    13
+* Connection #0 to host cbunu.com left intact
