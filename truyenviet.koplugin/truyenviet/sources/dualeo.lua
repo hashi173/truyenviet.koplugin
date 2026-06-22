@@ -52,7 +52,7 @@ local Source = {
     id = "dualeo",
     name = "Dưa Leo Truyện",
     kind = "comic",
-    base_url = "https://dualeotruyenbs.com",
+    base_url = "https://dualeotruyenpt.com",
     reversed_chapters = true,
 }
 
@@ -293,7 +293,7 @@ end
 function Source:getImageHeaders()
     return {
         ["Referer"] = self.base_url,
-        ["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        ["Accept"] = "image/webp,image/apng,image/*,*/*;q=0.8",
         ["Accept-Language"] = "vi-VN,vi;q=0.9,en;q=0.7",
         ["Cache-Control"] = "no-cache",
     }

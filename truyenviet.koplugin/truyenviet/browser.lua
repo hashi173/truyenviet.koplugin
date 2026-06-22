@@ -23,12 +23,17 @@ local Debug = require("truyenviet/debugger")
 
 local ListView = Menu:extend{
     is_popout = false,
+    title_bar_left_icon = "chevron.left",
 }
 
 function ListView:init()
     self.width = Screen:getWidth()
     self.height = Screen:getHeight()
     Menu.init(self)
+end
+
+function ListView:onLeftButtonTap()
+    self:onClose()
 end
 
 function ListView:onClose()
@@ -502,12 +507,15 @@ function Browser:showRoot()
             callback = function()
                 UIManager:show(TextViewer:new{
                     title = "Truyện Việt",
-            text = table.concat({
+                    text = table.concat({
                         "Đọc truyện trực tuyến trong KOReader.",
                         "",
                         "Nguồn truyện chữ: https://truyenfull.today/",
+                        "Nguồn truyện chữ: https://truyendich.vn/",
                         "Nguồn truyện tranh: https://truyenqqko.com/",
-                        "Nguồn truyện tranh: https://dualeotruyenbs.com/",
+                        "Nguồn truyện tranh: https://dualeotruyenpt.com/",
+                        "Nguồn truyện tranh: https://cbunu.com/",
+                        "Nguồn truyện tranh: https://haccbl.xyz/",
                         "",
                         "Chương truyện được lưu vào thư mục truyenviet trong thư mục dữ liệu KOReader.",
                         "Nội dung và ảnh thuộc về các website nguồn và chủ sở hữu tương ứng.",

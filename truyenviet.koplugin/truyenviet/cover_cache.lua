@@ -6,7 +6,7 @@ local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
 
 local CoverCache = {
-    extensions = { "avif", "gif", "jpg", "png", "webp" },
+    extensions = { "gif", "jpg", "png", "webp" },
     max_prefetch = 10,
 }
 
@@ -21,7 +21,18 @@ function CoverCache:get(story)
             stem .. "." .. extension
         )
         if lfs.attributes(path, "mode") == "file" then
-            return path
+            local file = io.open(path, "rb")
+            if file then
+                local content = file:read(12)
+                file:close()
+                if content and ImageUtils:isSupported(nil, content) then
+                    return path
+                else
+                    os.remove(path)
+                end
+            else
+                os.remove(path)
+            end
         end
     end
 end
@@ -38,7 +49,7 @@ function CoverCache:download(story, source)
     local headers = source.getCoverHeaders and source:getCoverHeaders(story) or {
         ["Referer"] = source.base_url .. "/",
     }
-    headers["Accept"] = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+    headers["Accept"] = "image/webp,image/apng,image/*,*/*;q=0.8"
 
     local content, err, response_headers = Http:requestAsync("GET", story.cover_url, nil, headers)
     if not content then

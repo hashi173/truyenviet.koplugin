@@ -7,6 +7,8 @@ local BUILTIN_SOURCES = {
     require("truyenviet/sources/truyenqq"),
     require("truyenviet/sources/dualeo"),
     require("truyenviet/sources/truyendich"),
+    require("truyenviet/sources/cbunu"),
+    require("truyenviet/sources/haccbl"),
 }
 
 local SOURCES_BY_ID = {}

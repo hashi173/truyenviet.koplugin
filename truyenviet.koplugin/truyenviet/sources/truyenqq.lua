@@ -179,54 +179,44 @@ function Source:parseStoryPage(html, story)
     local slug = story.url:match("([^/]+)$") or ""
     local base_slug = slug:match("^(.-)%-%d+%.html$") or slug:match("^(.-)%.html$") or slug
 
-    -- Narrow parsing to the chapter-list container to avoid picking up "Read from start" links
-    local list_start = html:find('class="works-chapter-list"', 1, true)
-        or html:find('class="list_chapter"', 1, true)
-        or html:find('class="list-chapters"', 1, true)
-    local list_html = html
-    if list_start then
-        -- find the opening tag start before the class attribute
-        local open_pos = list_start
-        while open_pos > 1 and html:sub(open_pos, open_pos) ~= '<' do open_pos = open_pos - 1 end
-        local ul_close = html:find("</ul>", list_start, true)
-        local div_close = html:find("</div>", list_start, true)
-        local close_pos = nil
-        if ul_close and div_close then
-            close_pos = math.min(ul_close, div_close)
-        else
-            close_pos = ul_close or div_close
-        end
-        if close_pos then
-            list_html = html:sub(open_pos, close_pos + 5)
-        else
-            list_html = html:sub(open_pos)
+    -- Parse chapter links from works-chapter-item divs (preferred structure)
+    for item_html in html:gmatch('<div[^>]-class="[^"]*works%-chapter%-item[^"]*"[^>]*>([%s%S]-)</div>%s*</div>') do
+        for anchor_attrs, anchor_html in item_html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
+            local href = Util.getAttribute(anchor_attrs, "href")
+            local chapter_url = Util.absoluteUrl(self.base_url, href)
+            if chapter_url and chapter_url:find(base_slug, 1, true) then
+                local lurl = (chapter_url or ""):lower()
+                if lurl:find("%-chap%-") or lurl:find("chapter") or lurl:find("chuong") then
+                    table.insert(chapters, {
+                        title = Util.stripTags(anchor_html),
+                        url = chapter_url,
+                        source_id = self.id,
+                        story_url = story.url,
+                        kind = self.kind,
+                    })
+                end
+            end
         end
     end
 
-    for anchor_attrs, anchor_html in list_html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
-        local href = Util.getAttribute(anchor_attrs, "href")
-        local chapter_url = Util.absoluteUrl(self.base_url, href)
-        if chapter_url and chapter_url:find(base_slug, 1, true) then
-            local lurl = (chapter_url or ""):lower()
-            local is_chapter = false
-            if lurl:find("%-chap%-") or lurl:find("chapter") or lurl:find("chuong") or chapter_url:match("%-%d+%%%.html$") then
-                is_chapter = true
-            end
-            local anchor_text = Util.stripTags(anchor_html) or ""
-            local at_lower = anchor_text:lower()
-            if not is_chapter then
-                if at_lower:find("chương%s*1") or at_lower:find("chapter%s*1") or at_lower:find("^1%s*$") then
-                    is_chapter = true
+    -- Fallback: search for chapter links inside list_chapter container
+    if #chapters == 0 then
+        local list_html = html:match('<div[^>]-class="[^"]*list_chapter[^"]*"[^>]*>([%s%S]-)</div>%s*</div>%s*<div[^>]-id="ad_info"')
+            or html
+        for anchor_attrs, anchor_html in list_html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
+            local href = Util.getAttribute(anchor_attrs, "href")
+            local chapter_url = Util.absoluteUrl(self.base_url, href)
+            if chapter_url and chapter_url:find(base_slug, 1, true) then
+                local lurl = (chapter_url or ""):lower()
+                if lurl:find("%-chap%-") or lurl:find("chapter") or lurl:find("chuong") then
+                    table.insert(chapters, {
+                        title = Util.stripTags(anchor_html),
+                        url = chapter_url,
+                        source_id = self.id,
+                        story_url = story.url,
+                        kind = self.kind,
+                    })
                 end
-            end
-            if is_chapter then
-                table.insert(chapters, {
-                    title = Util.stripTags(anchor_html),
-                    url = chapter_url,
-                    source_id = self.id,
-                    story_url = story.url,
-                    kind = self.kind,
-                })
             end
         end
     end

@@ -20,6 +20,7 @@ package.preload["socket.url"] = function()
     }
 end
 
+local mock_json = {}
 package.preload["util"] = function()
     return {
         htmlEntitiesToUtf8 = function(value)
@@ -36,6 +37,9 @@ package.preload["util"] = function()
         end,
         urlEncode = function(value)
             return value:gsub(" ", "%%20")
+        end,
+        jsonDecode = function(value)
+            return mock_json[value]
         end,
     }
 end
@@ -57,12 +61,23 @@ package.preload["truyenviet/storage"] = function()
     }
 end
 
+package.preload["truyenviet/debugger"] = function()
+    return {
+        write = function() end,
+    }
+end
+
 local TruyenFull = require("truyenviet/sources/truyenfull")
 local TruyenQQ = require("truyenviet/sources/truyenqq")
 local DuaLeo = require("truyenviet/sources/dualeo")
+local TruyenDich = require("truyenviet/sources/truyendich")
+local MangaDex = require("truyenviet/sources/mangadex")
+local Cbunu = require("truyenviet/sources/cbunu")
+local Haccbl = require("truyenviet/sources/haccbl")
 local SearchService = require("truyenviet/search_service")
 local SourceRegistry = require("truyenviet/source_registry")
 local Util = require("truyenviet/helpers")
+local Http = require("truyenviet/http_client")
 
 local tests_run = 0
 
@@ -316,6 +331,124 @@ assertEqual(
     "DuaLeo lazy image URL"
 )
 
+mock_json.mangadex_completed = {
+    result = "ok",
+    data = {},
+    total = 0,
+    limit = 20,
+}
+local captured_mangadex_url
+Http.get = function(_, url)
+    captured_mangadex_url = url
+    return "mangadex_completed"
+end
+local mangadex_ok, mangadex_listing = pcall(function()
+    return MangaDex:getCompleted(1)
+end)
+assertEqual(true, mangadex_ok, "MangaDex completed URL does not crash")
+assertEqual(0, #mangadex_listing.stories, "MangaDex parses empty response")
+assertContains(
+    captured_mangadex_url,
+    "status%5B%5D=completed",
+    "MangaDex keeps encoded array params"
+)
+
+local cbunu_listing = Cbunu:parseListing([[
+  <ul class="list-stories grid-6">
+    <li><div class="story-item">
+      <a href="https://cbunu.com/truyen-tranh/cnt-ga-deo-kinh-ky-la-phai-long-toi-291"
+         title="[CNT] Gã đeo kính kỳ lạ phải lòng tôi">
+        <img class="story-cover lazy_cover"
+             src="https://cbunu.com/page/upload/story/190x247/cnt.png">
+      </a>
+      <h3 class="title-book">
+        <a href="https://cbunu.com/truyen-tranh/cnt-ga-deo-kinh-ky-la-phai-long-toi-291"
+           title="[CNT] Gã đeo kính kỳ lạ phải lòng tôi">[CNT] Gã đeo kính...</a>
+      </h3>
+      <a href="https://cbunu.com/truyen-tranh/cnt-ga-deo-kinh-ky-la-phai-long-toi-291-chap-7.html">Chương 7</a>
+    </div></li>
+  </ul>
+  <a href="https://cbunu.com/the-loai/bl-.html">BL</a>
+  <a href="https://cbunu.com/truyen-hoan-thanh/trang-4.html">4</a>
+]], 1)
+assertEqual(1, #cbunu_listing.stories, "Cbunu listing count")
+assertEqual(
+    "[CNT] Gã đeo kính kỳ lạ phải lòng tôi",
+    cbunu_listing.stories[1].title,
+    "Cbunu full title from attribute"
+)
+assertEqual(4, cbunu_listing.total_pages, "Cbunu listing pages")
+assertEqual(1, #cbunu_listing.genres, "Cbunu listing genres")
+
+local cbunu_page = Cbunu:parseStoryPage([[
+  <div class="works-chapter-list">
+    <div class="works-chapter-item row">
+      <a href="https://cbunu.com/truyen-tranh/am-giu-linh-hon-139-chap-68.html">Chương 68</a>
+    </div>
+    <div class="works-chapter-item row">
+      <a href="https://cbunu.com/truyen-tranh/am-giu-linh-hon-139-chap-67.html">Chương 67</a>
+    </div>
+  </div>
+]], {
+    title = "Ám Giữ Linh Hồn",
+    url = "https://cbunu.com/truyen-tranh/am-giu-linh-hon-139",
+})
+assertEqual(2, #cbunu_page.chapters, "Cbunu chapter count")
+assertEqual("Chương 68", cbunu_page.chapters[1].title, "Cbunu chapter title")
+
+local hacc_listing = Haccbl:parseListing([[
+  <div class="manga-item-grid">
+    <a href="https://haccbl.xyz/manga/alpha-thi-co-sao/">
+      <img class="image-3-4" src="https://haccbl.xyz/wp-content/uploads/alpha.avif">
+    </a>
+    <h2 class="uk-h5">
+      <a class="uk-link-heading" href="https://haccbl.xyz/manga/alpha-thi-co-sao/">
+        Alpha thì có sao <span uk-icon="icon: check"></span>
+      </a>
+    </h2>
+  </div>
+  <a href="https://haccbl.xyz/truyen-da-hoan-thanh/page/6/">6</a>
+]], 1)
+assertEqual(1, #hacc_listing.stories, "Haccbl listing count")
+assertEqual("Alpha thì có sao", hacc_listing.stories[1].title, "Haccbl listing title")
+assertEqual(6, hacc_listing.total_pages, "Haccbl listing pages")
+
+local hacc_search = Haccbl:parseSearch([[
+  <article>
+    <a href="https://haccbl.xyz/manga/how-to-chase-an-alpha-kimnyeong/">
+      <img src="https://haccbl.xyz/wp-content/uploads/alpha.webp">
+    </a>
+    <h2><a class="uk-link-heading" href="https://haccbl.xyz/manga/how-to-chase-an-alpha-kimnyeong/">
+      How to Chase an <mark>Alpha</mark> | Kimnyeong
+    </a></h2>
+  </article>
+]])
+assertEqual(1, #hacc_search, "Haccbl search count")
+assertEqual("How to Chase an Alpha | Kimnyeong", hacc_search[1].title, "Haccbl search title")
+
+local hacc_page = Haccbl:parseStoryPage([[
+  <div class="chapter-list">
+    <div class="chapter-item">
+      <a class="uk-link-toggle" href="https://haccbl.xyz/manga/nhan-vien-moi-zec/chapter-45/">
+        <h3 class="uk-link-heading">Nhân viên mới [...] - Chương 45</h3>
+      </a>
+    </div>
+  </div>
+]], {
+    title = "Nhân viên mới | Zec",
+    url = "https://haccbl.xyz/manga/nhan-vien-moi-zec/",
+})
+assertEqual(1, #hacc_page.chapters, "Haccbl chapter count")
+assertContains(hacc_page.chapters[1].title, "Chương 45", "Haccbl chapter title")
+
+local hacc_payload, hacc_err = Haccbl:parseChapter([[
+  <div id="chapter-content">
+    <script>var InitMangaEncryptedChapter = {"ciphertext":"abc"};</script>
+  </div>
+]], hacc_page.chapters[1])
+assertEqual(nil, hacc_payload, "Haccbl encrypted chapter is not guessed")
+assertContains(hacc_err, "mã hóa", "Haccbl encrypted chapter error")
+
 local ranked = SearchService:search("pham nhan", {
     {
         id = "one",
@@ -331,11 +464,11 @@ local ranked = SearchService:search("pham nhan", {
 assertEqual("Phàm Nhân", ranked[1].title, "Search ranks exact title first")
 assertEqual(8, #Util.stableHash("https://example.com/cover.webp"), "Cover cache hash")
 
-assertEqual(4, #SourceRegistry:listAll(), "Registry keeps four built-in sources")
+assertEqual(7, #SourceRegistry:listAll(), "Registry keeps seven built-in sources")
 assertEqual(true, SourceRegistry:isEnabled("dualeo"), "DuaLeo starts enabled")
 assertEqual(true, SourceRegistry:setEnabled("dualeo", false), "DuaLeo can be disabled")
 assertEqual(false, SourceRegistry:isEnabled("dualeo"), "DuaLeo disabled state")
-assertEqual(3, #SourceRegistry:listEnabled(), "Disabled source leaves enabled list")
+assertEqual(6, #SourceRegistry:listEnabled(), "Disabled source leaves enabled list")
 assertEqual(true, SourceRegistry:setEnabled("dualeo", true), "DuaLeo can be enabled again")
 assertEqual(true, SourceRegistry:isEnabled("dualeo"), "DuaLeo enabled state restored")
 

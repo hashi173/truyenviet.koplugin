@@ -4,6 +4,133 @@ local socket = require("socket")
 local socket_url = require("socket.url")
 local socketutil = require("socketutil")
 local ko_util = require("util")
+local Debug = require("truyenviet/debugger")
+
+local parse_url = socket_url.parse
+local function parseProxy(proxy_str)
+    if not proxy_str or proxy_str == "" then return nil end
+    local host, port = proxy_str:match("^https?://([^:/]+):?(%d*)")
+    if not host then
+        host, port = proxy_str:match("^([^:/]+):?(%d*)")
+    end
+    port = tonumber(port) or 8080
+    return host, port
+end
+
+local function parseTarget(url_str)
+    local parsed = parse_url(url_str)
+    if not parsed then return nil, 80 end
+    local host = parsed.host
+    local port = tonumber(parsed.port)
+    if not port then
+        if parsed.scheme == "https" then
+            port = 443
+        else
+            port = 80
+        end
+    end
+    return host, port
+end
+
+local function create_proxy_socket(proxy_host, proxy_port, target_host, target_port)
+    return function()
+        local conn = socket.tcp()
+        conn:settimeout(socketutil.block_timeout or 15, "b")
+        conn:settimeout(socketutil.total_timeout or 60, "t")
+        
+        local ok, err = conn:connect(proxy_host, proxy_port)
+        if not ok then
+            Debug.write(string.format("[PROXY CONNECT ERROR] Cannot connect to proxy %s:%d - %s", proxy_host, proxy_port, tostring(err)))
+            return nil, err
+        end
+        
+        -- Send CONNECT command
+        local req = string.format("CONNECT %s:%d HTTP/1.1\r\nHost: %s:%d\r\n\r\n", target_host, target_port, target_host, target_port)
+        conn:send(req)
+        
+        -- Read response
+        local status_line, status_err = conn:receive("*l")
+        if not status_line then
+            conn:close()
+            Debug.write("[PROXY CONNECT ERROR] Proxy closed connection during CONNECT handshake")
+            return nil, status_err or "Proxy closed connection"
+        end
+        
+        local code = status_line:match("HTTP/%d%.%d%s+(%d+)")
+        if code ~= "200" then
+            conn:close()
+            Debug.write("[PROXY CONNECT ERROR] Proxy returned HTTP status code: " .. tostring(code))
+            return nil, "Proxy returned HTTP " .. tostring(code)
+        end
+        
+        -- Read headers
+        while true do
+            local line, hdr_err = conn:receive("*l")
+            if not line or line == "" then
+                break
+            end
+        end
+        
+        -- Mock connect to do nothing and return success
+        conn.real_connect = conn.connect
+        conn.connect = function(self, host, port)
+            return 1
+        end
+        
+        Debug.write(string.format("[PROXY CONNECT SUCCESS] Tunnel established to %s:%d", target_host, target_port))
+        return conn
+    end
+end
+
+if not http._original_request then
+    http._original_request = http.request
+    http.request = function(reqt, body)
+        local is_table = (type(reqt) == "table")
+        local url_str = is_table and reqt.url or reqt
+        
+        local old_proxy = http.PROXY
+        local proxy_host, proxy_port = parseProxy(old_proxy)
+        local is_https = url_str and url_str:lower():sub(1, 8) == "https://"
+        
+        Debug.write(string.format("[HTTP wrapper] request: %s, is_https: %s, proxy: %s", tostring(url_str), tostring(is_https), tostring(old_proxy)))
+        
+        if is_https and proxy_host then
+            local target_host, target_port = parseTarget(url_str)
+            if not is_table then
+                reqt = {
+                    url = url_str,
+                    method = "GET",
+                    source = body and ltn12.source.string(body) or nil,
+                }
+                is_table = true
+            end
+            
+            reqt.create = create_proxy_socket(proxy_host, proxy_port, target_host, target_port)
+            http.PROXY = nil
+            
+            local success, r1, r2, r3, r4 = pcall(http._original_request, reqt)
+            http.PROXY = old_proxy
+            if success then
+                return r1, r2, r3, r4
+            else
+                error(r1)
+            end
+        else
+            -- Direct connection or plain HTTP through proxy
+            http.PROXY = nil
+            if not is_https then
+                http.PROXY = old_proxy
+            end
+            local success, r1, r2, r3, r4 = pcall(http._original_request, reqt, body)
+            http.PROXY = old_proxy
+            if success then
+                return r1, r2, r3, r4
+            else
+                error(r1)
+            end
+        end
+    end
+end
 
 local HttpClient = {
     connect_timeout = 15,
@@ -28,15 +155,30 @@ local function validateUrl(url)
     return parsed and (parsed.scheme == "http" or parsed.scheme == "https")
 end
 
-function HttpClient:request(method, url, body, headers)
+function HttpClient:request(method, url, body, headers, options)
     if not validateUrl(url) then
+        Debug.write(string.format("[HTTP ERROR] Invalid URL: %s", tostring(url)))
         return nil, "URL không hợp lệ: " .. tostring(url)
     end
 
-    local sink = {}
+    Debug.write(string.format("[HTTP request start] %s %s", method, url))
+    Debug.write(string.format("  http.PROXY = %s", tostring(http.PROXY)))
     local request_headers = mergeHeaders(headers)
+    for k, v in pairs(request_headers) do
+        Debug.write(string.format("  Req Header: %s: %s", k, v))
+    end
+    if body then
+        Debug.write(string.format("  Req Body (len=%d): %s", #body, tostring(body):sub(1, 200)))
+    end
+
+    local sink = {}
     if body then
         request_headers["Content-Length"] = tostring(#body)
+    end
+
+    local redirect = true
+    if type(options) == "table" and options.redirect ~= nil then
+        redirect = options.redirect
     end
 
     socketutil:set_timeout(self.connect_timeout, self.total_timeout)
@@ -46,32 +188,44 @@ function HttpClient:request(method, url, body, headers)
             method = method,
             headers = request_headers,
             source = body and ltn12.source.string(body) or nil,
-            sink = socketutil.table_sink(sink),
-            redirect = true,
+            sink = ltn12.sink.table(sink),
+            redirect = redirect,
         }))
     end)
     socketutil:reset_timeout()
 
     if not ok then
+        Debug.write(string.format("[HTTP request exception] %s %s -> %s", method, url, tostring(code)))
         return nil, tostring(code)
     end
     if code == socketutil.TIMEOUT_CODE
             or code == socketutil.SSL_HANDSHAKE_CODE
             or code == socketutil.SINK_TIMEOUT_CODE then
+        Debug.write(string.format("[HTTP request timeout/ssl] %s %s -> code: %s, status: %s", method, url, tostring(code), tostring(status)))
         return nil, "Kết nối bị gián đoạn: " .. tostring(status or code)
     end
     if response_headers == nil then
+        Debug.write(string.format("[HTTP request fail - no headers] %s %s -> code: %s, status: %s", method, url, tostring(code), tostring(status)))
         return nil, "Không thể kết nối tới máy chủ"
     end
 
     local numeric_code = tonumber(code)
+    Debug.write(string.format("[HTTP request respond] %s %s -> code: %s, numeric_code: %s", method, url, tostring(code), tostring(numeric_code)))
+    for k, v in pairs(response_headers) do
+        Debug.write(string.format("  Resp Header: %s: %s", k, tostring(v)))
+    end
+
     if not numeric_code or numeric_code < 200 or numeric_code >= 300 then
-        return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code))
+        local error_body = table.concat(sink)
+        Debug.write(string.format("  Resp Error Body (len=%d): %s", #error_body, error_body:sub(1, 500)))
+        return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code)), response_headers, numeric_code, error_body
     end
 
     local content = table.concat(sink)
+    Debug.write(string.format("  Resp Body (len=%d): %s", #content, content:sub(1, 100)))
     local content_length = tonumber(response_headers["content-length"])
     if content_length and #content ~= content_length then
+        Debug.write(string.format("[HTTP ERROR] Incomplete body: expected %d, got %d", content_length, #content))
         return nil, "Dữ liệu tải về không đầy đủ"
     end
 
@@ -91,11 +245,21 @@ end
 
 function HttpClient:requestAsync(method, url, body, headers, opts)
     if not validateUrl(url) then
+        Debug.write(string.format("[HTTP Async ERROR] Invalid URL: %s", tostring(url)))
         return nil, "URL không hợp lệ: " .. tostring(url)
     end
+    
+    Debug.write(string.format("[HTTP Async request start] %s %s", method, url))
+    local request_headers = mergeHeaders(headers)
+    for k, v in pairs(request_headers) do
+        Debug.write(string.format("  Req Header: %s: %s", k, v))
+    end
+    if body then
+        Debug.write(string.format("  Req Body (len=%d): %s", #body, tostring(body):sub(1, 200)))
+    end
+
     local copas_http = require("copas.http")
     local sink = {}
-    local request_headers = mergeHeaders(headers)
     if body then
         request_headers["Content-Length"] = tostring(#body)
     end
@@ -113,17 +277,31 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
     local ok, result, code, response_headers, status = pcall(function()
         return copas_http.request(reqt)
     end)
+
     if not ok then
+        Debug.write(string.format("[HTTP Async request exception] %s %s -> %s", method, url, tostring(result)))
         return nil, tostring(result)
     end
     if not result then
+        Debug.write(string.format("[HTTP Async request failed] %s %s -> code: %s, status: %s", method, url, tostring(code), tostring(status)))
         return nil, tostring(code)
     end
+    
     local numeric_code = tonumber(code)
+    Debug.write(string.format("[HTTP Async request respond] %s %s -> result: %s, code: %s, numeric_code: %s", method, url, tostring(result), tostring(code), tostring(numeric_code)))
+    if response_headers then
+        for k, v in pairs(response_headers) do
+            Debug.write(string.format("  Resp Header: %s: %s", k, tostring(v)))
+        end
+    end
+
     if not numeric_code or numeric_code < 200 or numeric_code >= 300 then
+        local error_body = table.concat(sink)
+        Debug.write(string.format("  Resp Error Body (len=%d): %s", #error_body, error_body:sub(1, 500)))
         return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code))
     end
     local content = table.concat(sink)
+    Debug.write(string.format("  Resp Body (len=%d): %s", #content, content:sub(1, 100)))
     return content, nil, response_headers, numeric_code
 end
 
@@ -133,7 +311,7 @@ function HttpClient:getJson(url, headers)
     return self:get(url, headers)
 end
 
-function HttpClient:postForm(url, fields, headers)
+function HttpClient:postForm(url, fields, headers, options)
     local parts = {}
     for key, value in pairs(fields) do
         local encoded_key = ko_util.urlEncode(tostring(key)):gsub("%%20", "+")
@@ -144,7 +322,7 @@ function HttpClient:postForm(url, fields, headers)
 
     headers = mergeHeaders(headers)
     headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
-    return self:request("POST", url, table.concat(parts, "&"), headers)
+    return self:request("POST", url, table.concat(parts, "&"), headers, options)
 end
 
 return HttpClient

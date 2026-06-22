@@ -177,7 +177,7 @@ function StoryResults:init()
         fullscreen = true,
         title = self.title,
         subtitle = self.subtitle,
-        left_icon = "appbar.arrow.left",
+        left_icon = "chevron.left",
         left_icon_tap_callback = function()
             self:onClose()
         end,

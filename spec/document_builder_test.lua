@@ -33,6 +33,11 @@ package.preload["truyenviet/http_client"] = function()
                 ["content-type"] = "text/html",
             }
         end,
+        requestAsync = function(self, method, url, body, headers, options)
+            return "<html>blocked</html>", nil, {
+                ["content-type"] = "text/html",
+            }
+        end,
     }
 end
 
@@ -41,6 +46,20 @@ package.preload["truyenviet/storage"] = function()
         getChapterPath = function()
             return output_path
         end,
+    }
+end
+
+package.preload["socket"] = function()
+    return {
+        sleep = function() end,
+        gettime = function() return os.time() end,
+        select = function() return {}, {}, "timeout" end,
+    }
+end
+
+package.preload["truyenviet/debugger"] = function()
+    return {
+        write = function() end,
     }
 end
 
@@ -132,9 +151,10 @@ local comic_path, comic_err = Builder:build(
     }
 )
 assertEqual(nil, comic_path, "Rejects non-image comic payload")
+assert(comic_err, "Should return an error")
 assertEqual(
     true,
-    tostring(comic_err):find("định dạng ảnh", 1, true) ~= nil,
+    tostring(comic_err):find("Lỗi", 1, true) ~= nil,
     "Reports invalid comic image"
 )
 

@@ -42,6 +42,14 @@ assertEqual(
     "Rejects HTML payload"
 )
 assertEqual(
+    false,
+    ImageUtils:isSupported(
+        { ["content-type"] = "image/avif" },
+        "\0\0\0\24ftypavifpayload"
+    ),
+    "Rejects AVIF payloads for KOReader widgets"
+)
+assertEqual(
     "webp",
     ImageUtils:detectExtension(nil, "RIFFxxxxWEBPpayload", "page"),
     "Detects WebP signature"

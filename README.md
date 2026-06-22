@@ -159,8 +159,7 @@ Liên kết plugin đang phát triển vào thư mục dữ liệu KOReader:
 
 ```sh
 mkdir -p ~/.config/koreader/plugins
-ln -sfnT /mnt/d/Project/truyenfull/truyenviet.koplugin
-  ~/.config/koreader/plugins/truyenviet.koplugin
+ln -sfnT /mnt/d/Project/truyenfull/truyenviet.koplugin ~/.config/koreader/plugins/truyenviet.koplugin
 ```
 
 Khởi chạy:
