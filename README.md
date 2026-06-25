@@ -5,6 +5,9 @@ Plugin KOReader thuần Lua để tìm và đọc:
 - Truyện chữ từ [truyenfull.today](https://truyenfull.today/)
 - Truyện tranh từ [truyenqqko.com](https://truyenqqko.com/)
 - Truyện tranh từ [dualeotruyenbs.com](https://dualeotruyenbs.com/)
+- Truyện tranh từ [cbunu.com](https://cbunu.com/)
+- Truyện tranh từ [haccbl.xyz](https://haccbl.xyz/)
+- Truyện chữ từ [truyendich.ai](https://truyendich.ai/)
 
 Plugin tải chương về thư mục dữ liệu KOReader rồi mở bằng trình đọc có sẵn:
 
@@ -70,7 +73,7 @@ mục lục thay vì tải quá nhiều chương manga liên tiếp.
 
 ## Sử dụng
 
-- Chạm `TruyenFull`, `TruyenQQ` hoặc `Dưa Leo Truyện` để xem các truyện đã hoàn thành.
+- Chạm vào nguồn (như `TruyenFull`, `TruyenQQ`, `Hắc Ám Chi Các`, v.v.) để xem các truyện đã hoàn thành.
 - Trong màn hình của một nguồn, dùng nút kính lúp để tìm kiếm; dùng `Thể loại`, `‹`, `›` ở thanh dưới để lọc và chuyển trang web.
 - Vuốt danh sách hoặc dùng phím chuyển trang để xem các truyện còn lại trong trang web hiện tại.
 - Chạm một truyện để mở danh sách chương.
@@ -101,7 +104,10 @@ truyenviet.koplugin/
     widgets/
       story_results.lua
     sources/
+      cbunu.lua
       dualeo.lua
+      haccbl.lua
+      truyendich.lua
       truyenfull.lua
       truyenqq.lua
 ```
