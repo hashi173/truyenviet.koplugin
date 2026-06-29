@@ -7,6 +7,7 @@ local Source = {
     name = "Truyendich",
     kind = "text",
     base_url = "https://truyendich.ai",
+    max_concurrent = 2,
 }
 
 local function requestHeaders(referer)
@@ -145,6 +146,10 @@ function Source:parseStoryPage(html, story, page)
     for p_num in html:gmatch(slug .. "/trang%-(%d+)") do
         total_pages = math.max(total_pages, tonumber(p_num) or 1)
     end
+    local next_pages = html:match(">%s*%d+%s*<!%-%-.-%-%->%s*/%s*<!%-%-.-%-%->%s*(%d+)%s*<")
+    if next_pages then
+        total_pages = math.max(total_pages, tonumber(next_pages) or 1)
+    end
 
     story.details = self:parseStoryDetails(html)
     return {
@@ -172,16 +177,25 @@ function Source:parseChapter(html, chapter)
     local chapter_title = Util.stripTags(html:match('<h1[^>]*itemProp="name"[^>]*>([%s%S]-)</h1>')) or Util.stripTags(html:match('<h2[^>]*chapter%-title[^>]*>([%s%S]-)</h2>'))
 
     local start_at = html:find('id="original-content-tab"', 1, true)
-    if not start_at then
+    local end_at
+    if start_at then
+        start_at = html:find(">", start_at, true)
+        end_at = html:find('</section>', start_at, true) or html:find('</div>%s*<nav', start_at) or html:find('</div>%s*<div', start_at)
+    else
         start_at = html:find('id="chapter-c"', 1, true)
+        if not start_at then
+            return nil, "Không tìm thấy nội dung chương"
+        end
+        start_at = html:find(">", start_at, true)
     end
-    if not start_at then
-        return nil, "Không tìm thấy nội dung chương"
-    end
-    start_at = html:find(">", start_at, true)
 
-    local end_at = html:find('</div>', start_at) or #html
-    local content = Util.sanitizeContentHtml(html:sub(start_at + 1, end_at - 1))
+    if not end_at then
+        end_at = html:find('</div>', start_at, true) or #html
+    end
+    
+    local temp = html:sub(start_at + 1, end_at - 1)
+    temp = temp:gsub("</div>%s*$", "")
+    local content = Util.sanitizeContentHtml(temp)
 
     return {
         title = chapter_title or chapter.title,

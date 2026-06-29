@@ -171,27 +171,55 @@ function HttpClient:request(method, url, body, headers, options)
         Debug.write(string.format("  Req Body (len=%d): %s", #body, tostring(body):sub(1, 200)))
     end
 
-    local sink = {}
-    if body then
-        request_headers["Content-Length"] = tostring(#body)
-    end
-
     local redirect = true
     if type(options) == "table" and options.redirect ~= nil then
         redirect = options.redirect
     end
 
+    local max_retries = 3
+    local delay = 2
+    local ok, code, response_headers, status
+    local result_code, result_headers, result_status
+    local sink = {}
+
     socketutil:set_timeout(self.connect_timeout, self.total_timeout)
-    local ok, code, response_headers, status = pcall(function()
-        return socket.skip(1, http.request({
-            url = url,
-            method = method,
-            headers = request_headers,
-            source = body and ltn12.source.string(body) or nil,
-            sink = ltn12.sink.table(sink),
-            redirect = redirect,
-        }))
-    end)
+    for attempt = 1, max_retries + 1 do
+        sink = {}
+        ok, code, response_headers, status = pcall(function()
+            return socket.skip(1, http.request({
+                url = url,
+                method = method,
+                headers = request_headers,
+                source = body and ltn12.source.string(body) or nil,
+                sink = ltn12.sink.table(sink),
+                redirect = redirect,
+            }))
+        end)
+
+        if not ok then
+            break
+        end
+        if code == socketutil.TIMEOUT_CODE
+                or code == socketutil.SSL_HANDSHAKE_CODE
+                or code == socketutil.SINK_TIMEOUT_CODE then
+            break
+        end
+        if response_headers == nil then
+            break
+        end
+
+        local numeric_code = tonumber(code)
+        if numeric_code == 429 and attempt <= max_retries then
+            Debug.write(string.format("[HTTP 429] Retry attempt %d after %d seconds", attempt, delay))
+            socket.select(nil, nil, delay)
+            delay = delay * 2
+        else
+            result_code = numeric_code
+            result_headers = response_headers
+            result_status = status
+            break
+        end
+    end
     socketutil:reset_timeout()
 
     if not ok then
@@ -209,7 +237,7 @@ function HttpClient:request(method, url, body, headers, options)
         return nil, "Không thể kết nối tới máy chủ"
     end
 
-    local numeric_code = tonumber(code)
+    local numeric_code = result_code
     Debug.write(string.format("[HTTP request respond] %s %s -> code: %s, numeric_code: %s", method, url, tostring(code), tostring(numeric_code)))
     for k, v in pairs(response_headers) do
         Debug.write(string.format("  Resp Header: %s: %s", k, tostring(v)))
@@ -222,6 +250,11 @@ function HttpClient:request(method, url, body, headers, options)
     end
 
     local content = table.concat(sink)
+    if content:find("window._cf_chl_opt", 1, true) or content:find('id="challenge%-error%-text"', 1, true) or content:find("<title>Just a moment...</title>", 1, true) then
+        Debug.write("[HTTP ERROR] Cloudflare challenge detected in 200 OK response")
+        return nil, "Bị chặn bởi Cloudflare (Anti-Bot)", response_headers, 403, content
+    end
+
     Debug.write(string.format("  Resp Body (len=%d): %s", #content, content:sub(1, 100)))
     local content_length = tonumber(response_headers["content-length"])
     if content_length and #content ~= content_length then
@@ -259,24 +292,50 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
     end
 
     local copas_http = require("copas.http")
+    local copas = require("copas")
     local sink = {}
     if body then
         request_headers["Content-Length"] = tostring(#body)
     end
     opts = opts or {}
     local req_timeout = opts.timeout or self.total_timeout
-    local reqt = {
-        url = url,
-        method = method,
-        headers = request_headers,
-        source = body and ltn12.source.string(body) or nil,
-        sink = ltn12.sink.table(sink),
-        redirect = true,
-        timeout = req_timeout
-    }
-    local ok, result, code, response_headers, status = pcall(function()
-        return copas_http.request(reqt)
-    end)
+    
+    local max_retries = 3
+    local delay = 2
+    local ok, result, code, response_headers, status
+    local result_code, result_headers, result_status
+    
+    for attempt = 1, max_retries + 1 do
+        sink = {}
+        local reqt = {
+            url = url,
+            method = method,
+            headers = request_headers,
+            source = body and ltn12.source.string(body) or nil,
+            sink = ltn12.sink.table(sink),
+            redirect = true,
+            timeout = req_timeout
+        }
+        ok, result, code, response_headers, status = pcall(function()
+            return copas_http.request(reqt)
+        end)
+
+        if not ok or not result then
+            break
+        end
+
+        local numeric_code = tonumber(code)
+        if numeric_code == 429 and attempt <= max_retries then
+            Debug.write(string.format("[HTTP Async 429] Retry attempt %d after %d seconds", attempt, delay))
+            copas.sleep(delay)
+            delay = delay * 2
+        else
+            result_code = numeric_code
+            result_headers = response_headers
+            result_status = status
+            break
+        end
+    end
 
     if not ok then
         Debug.write(string.format("[HTTP Async request exception] %s %s -> %s", method, url, tostring(result)))
@@ -287,7 +346,10 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
         return nil, tostring(code)
     end
     
-    local numeric_code = tonumber(code)
+    local numeric_code = result_code
+    response_headers = result_headers
+    code = result_code or result_status
+    status = result_status
     Debug.write(string.format("[HTTP Async request respond] %s %s -> result: %s, code: %s, numeric_code: %s", method, url, tostring(result), tostring(code), tostring(numeric_code)))
     if response_headers then
         for k, v in pairs(response_headers) do
@@ -300,7 +362,13 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
         Debug.write(string.format("  Resp Error Body (len=%d): %s", #error_body, error_body:sub(1, 500)))
         return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code))
     end
+    
     local content = table.concat(sink)
+    if content:find("window._cf_chl_opt", 1, true) or content:find('id="challenge%-error%-text"', 1, true) or content:find("<title>Just a moment...</title>", 1, true) then
+        Debug.write("[HTTP Async ERROR] Cloudflare challenge detected in 200 OK response")
+        return nil, "Bị chặn bởi Cloudflare (Anti-Bot)"
+    end
+
     Debug.write(string.format("  Resp Body (len=%d): %s", #content, content:sub(1, 100)))
     return content, nil, response_headers, numeric_code
 end

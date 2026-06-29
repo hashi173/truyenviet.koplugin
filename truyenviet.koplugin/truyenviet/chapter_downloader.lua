@@ -74,7 +74,7 @@ function ChapterDownloader:download(source, story, chapters)
     else
         local copas = require("copas")
         local active_downloads = 0
-        local max_concurrent = 10
+        local max_concurrent = source.max_concurrent or 10
 
         for _, chapter in ipairs(chapters or {}) do
             if Storage:isDownloaded(source, story, chapter) then
