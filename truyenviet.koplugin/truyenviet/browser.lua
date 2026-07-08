@@ -659,7 +659,7 @@ function Browser:browseSource(source, genre, local_page, on_return_callback)
             result, err = withLoading(
                 string.format(
                     "Đang tải %s...\nTrang %d",
-                    genre and genre.name or "truyện đã hoàn thành",
+                    genre and genre.name or (source.id == "docln" and "truyện dịch" or "truyện đã hoàn thành"),
                     server_page
                 ),
                 function()

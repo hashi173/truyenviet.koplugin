@@ -259,7 +259,8 @@ end
 
 function Source:getCompleted(page)
     page = page or 1
-    local url = self.base_url .. "/danh-sach?truyendich=1&hoanthanh=1&sapxep=capnhat"
+    -- Xóa &hoanthanh=1 để lấy tất cả truyện dịch thay vì chỉ lấy truyện đã hoàn thành
+    local url = self.base_url .. "/danh-sach?truyendich=1&sapxep=capnhat"
     if page > 1 then
         url = url .. "&page=" .. page
     end
@@ -268,7 +269,7 @@ function Source:getCompleted(page)
         return nil, err
     end
     local result = self:parseListing(html, page)
-    result.title = "Truyện đã hoàn thành"
+    result.title = "Truyện dịch"
     return result
 end
 
