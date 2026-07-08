@@ -242,7 +242,7 @@ function Source:parseListing(html, page)
 
     -- Parse pagination
     local max_page = page or 1
-    for p_num in html:gmatch("[?&]page=(%d+)") do
+    for p_num in html:gmatch("page=(%d+)") do
         local n = tonumber(p_num)
         if n and n > max_page then
             max_page = n
