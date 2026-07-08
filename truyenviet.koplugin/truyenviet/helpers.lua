@@ -251,7 +251,7 @@ function Util.maxPage(html, minimum)
     for page in tostring(html or ""):gmatch("trang%-(%d+)") do
         max_page = math.max(max_page, tonumber(page) or 1)
     end
-    for page in tostring(html or ""):gmatch("[?&]page=(%d+)") do
+    for page in tostring(html or ""):gmatch("page=(%d+)") do
         max_page = math.max(max_page, tonumber(page) or 1)
     end
     return max_page
