@@ -10,6 +10,7 @@ local BUILTIN_SOURCES = {
     require("truyenviet/sources/cbunu"),
     require("truyenviet/sources/haccbl"),
     require("truyenviet/sources/giatocvuongtai"),
+    require("truyenviet/sources/docln"),
 }
 
 local SOURCES_BY_ID = {}
