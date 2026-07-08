@@ -164,6 +164,30 @@ function Storage:removeDownload(source, story, chapter)
     return true
 end
 
+function Storage:removeAllDownloads()
+    local path = self:getRootDir()
+    if lfs.attributes(path, "mode") ~= "directory" then return true end
+
+    local function rmdir_recursive(dir_path)
+        for file in lfs.dir(dir_path) do
+            if file ~= "." and file ~= ".." then
+                local full_path = dir_path .. "/" .. file
+                if lfs.attributes(full_path, "mode") == "directory" then
+                    rmdir_recursive(full_path)
+                else
+                    os.remove(full_path)
+                end
+            end
+        end
+        lfs.rmdir(dir_path)
+    end
+
+    local ok, err = pcall(rmdir_recursive, path)
+    -- Recreate the root directory after deletion
+    lfs.mkdir(path)
+    return ok, err
+end
+
 function Storage:getFavorites()
     self:initialize()
     local favorites = self.settings:readSetting("favorites", {})

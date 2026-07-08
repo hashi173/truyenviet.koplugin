@@ -369,6 +369,28 @@ function Browser:showRoot()
                 end)
             end,
         })
+        table.insert(items, {
+            text = "Xóa tất cả truyện đã tải",
+            callback = function()
+                local ConfirmBox = require("ui/widget/confirmbox")
+                UIManager:show(ConfirmBox:new{
+                    text = "Bạn có chắc chắn muốn xóa TẤT CẢ truyện đã tải không?\nThao tác này không thể hoàn tác.",
+                    ok_text = "Xóa",
+                    cancel_text = "Hủy",
+                    ok_callback = function()
+                        local ok, err = Storage:removeAllDownloads()
+                        if ok then
+                            UIManager:show(InfoMessage:new{
+                                title = "Truyện Việt",
+                                text = "Đã xóa toàn bộ truyện tải về."
+                            })
+                        else
+                            showError("Lỗi khi xóa: " .. tostring(err))
+                        end
+                    end,
+                })
+            end,
+        })
     table.insert(items, {
             text = "Xóa bộ nhớ đệm ảnh bìa",
             callback = function()
