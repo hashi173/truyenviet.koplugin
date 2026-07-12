@@ -33,15 +33,35 @@ local function replaceFile(temp_path, final_path)
     return final_path
 end
 
+function DocumentBuilder:getTempPath(source, story, chapter)
+    if lfs.attributes("/tmp", "mode") == "directory" then
+        local extension = source.kind == "comic" and ".cbz" or ".html"
+        local key = tostring(chapter.url or chapter.title):gsub("[^%w]", "")
+        if #key > 40 then key = key:sub(-40) end
+        return "/tmp/truyenviet_read_" .. key .. extension
+    end
+    return nil
+end
+
 function DocumentBuilder:getExistingPath(source, story, chapter)
     local path = Storage:getChapterPath(source, story, chapter)
     if lfs.attributes(path, "mode") == "file" then
         return path
     end
+    
+    local temp_path = self:getTempPath(source, story, chapter)
+    if temp_path and lfs.attributes(temp_path, "mode") == "file" then
+        return temp_path
+    end
 end
 
-function DocumentBuilder:buildText(source, story, chapter, payload)
-    local path = Storage:getChapterPath(source, story, chapter)
+function DocumentBuilder:buildText(source, story, chapter, payload, is_temp)
+    local path
+    if is_temp then
+        path = self:getTempPath(source, story, chapter) or Storage:getChapterPath(source, story, chapter)
+    else
+        path = Storage:getChapterPath(source, story, chapter)
+    end
     local temp_path = path .. ".part"
     if lfs.attributes("/tmp", "mode") == "directory" then
         temp_path = "/tmp/truyenviet_temp_" .. os.time() .. "_" .. tostring(math.random(1000, 9999)) .. ".part"
@@ -130,8 +150,13 @@ local function downloadImageWithRetry(image, referer, max_retries)
     return nil, last_error
 end
 
-function DocumentBuilder:buildComic(source, story, chapter, payload)
-    local path = Storage:getChapterPath(source, story, chapter)
+function DocumentBuilder:buildComic(source, story, chapter, payload, is_temp)
+    local path
+    if is_temp then
+        path = self:getTempPath(source, story, chapter) or Storage:getChapterPath(source, story, chapter)
+    else
+        path = Storage:getChapterPath(source, story, chapter)
+    end
     local temp_path = path .. ".part"
     if lfs.attributes("/tmp", "mode") == "directory" then
         temp_path = "/tmp/truyenviet_temp_" .. os.time() .. "_" .. tostring(math.random(1000, 9999)) .. ".part"
@@ -267,7 +292,7 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
     return replaceFile(temp_path, path)
 end
 
-function DocumentBuilder:build(source, story, chapter, payload, force)
+function DocumentBuilder:build(source, story, chapter, payload, force, is_temp)
     if type(payload) == "string" then
         payload = { content = payload }
     end
@@ -278,9 +303,9 @@ function DocumentBuilder:build(source, story, chapter, payload, force)
         end
     end
     if source.kind == "comic" then
-        return self:buildComic(source, story, chapter, payload)
+        return self:buildComic(source, story, chapter, payload, is_temp)
     end
-    return self:buildText(source, story, chapter, payload)
+    return self:buildText(source, story, chapter, payload, is_temp)
 end
 
 return DocumentBuilder

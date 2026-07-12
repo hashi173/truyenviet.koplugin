@@ -172,7 +172,7 @@ end
 
 local function curlFallback(method, url, request_headers)
     local function runCurl(extra_args)
-        local curl_cmd = "curl -skSL --http1.1 --noproxy \"*\"" .. (extra_args and (" " .. extra_args) or "")
+        local curl_cmd = "curl -skSL" .. (extra_args and (" " .. extra_args) or "")
         if method and method:upper() ~= "GET" then
             curl_cmd = curl_cmd .. string.format(' -X %s', method)
         end

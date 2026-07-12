@@ -1914,7 +1914,7 @@ function Browser:openChapter(view, page_data, source, chapter, on_return_callbac
         local action = source.kind == "comic" and "Đang tải ảnh và đóng gói CBZ..." or "Đang tạo tệp HTML..."
         local completed, path, build_err = Trapper:dismissableRunInSubprocess(
             function()
-                return Builder:build(source, story, chapter, payload, force)
+                return Builder:build(source, story, chapter, payload, force, true)
             end,
             action
         )
