@@ -1,35 +1,43 @@
 # Truyện Việt cho KOReader
 
-Plugin KOReader thuần Lua để tìm và đọc:
+Plugin KOReader thuần Lua để tìm và đọc (phiên bản 3.0.0):
 
-- Truyện chữ từ [truyenfull.today](https://truyenfull.today/)
-- Truyện tranh từ [truyenqqko.com](https://truyenqqko.com/)
-- Truyện tranh từ [dualeotruyenbs.com](https://dualeotruyenbs.com/)
-- Truyện tranh từ [cbunu.com](https://cbunu.com/)
-- Truyện tranh từ [haccbl.xyz](https://haccbl.xyz/)
-- Truyện chữ từ [truyendich.ai](https://truyendich.ai/)
+- Truyện chữ từ [truyenfull.live](https://truyenfull.live)
+- Truyện tranh từ [truyenqqko.com](https://truyenqqko.com)
+- Truyện tranh từ [dualeotruyenhn.com](https://dualeotruyenhn.com)
+- Truyện chữ từ [truyendich.ai](https://truyendich.ai)
+- Truyện tranh từ [cbunu.com](https://cbunu.com)
+- Truyện tranh từ [haccbl.xyz](https://haccbl.xyz)
+- Truyện chữ từ [giatocvuongtai.com](https://giatocvuongtai.com)
+- Truyện chữ từ [docln.sbs](https://docln.sbs)
+- Truyện tranh từ [tve-4u.org](https://tve-4u.org)
+- Truyện tranh từ [dilib.vn](https://dilib.vn)
+- Truyện chữ từ [mizzya.wordpress.com](https://mizzya.wordpress.com)
+- Truyện chữ từ [metruyenvn.org](https://metruyenvn.org)
+- Truyện chữ từ [aztruyen.top](https://aztruyen.top)
+- Truyện chữ từ [dualeotruyenfull.net](https://dualeotruyenfull.net)
+- Truyện chữ từ [truyenc.com](https://truyenc.com)
 
 Plugin tải chương về thư mục dữ liệu KOReader rồi mở bằng trình đọc có sẵn:
 
-- TruyenFull được lưu dưới dạng HTML.
-- TruyenQQ và Dưa Leo được đóng gói thành CBZ, phù hợp với trình đọc manga của KOReader.
+- Truyện chữ được lưu dưới dạng HTML.
+- Truyện tranh được đóng gói thành CBZ, phù hợp với trình đọc manga của KOReader.
 
 ## Tính năng
 
 - Chạm vào từng nguồn để mở ngay danh sách truyện đã hoàn thành.
 - Tìm riêng trong nguồn bằng nút kính lúp, lọc theo thể loại và chuyển trang ngay trên danh sách.
 - Tìm đồng thời trên mọi nguồn đang bật hoặc tìm theo từng nguồn.
-- Chuẩn hóa dấu tiếng Việt, ưu tiên tên khớp chính xác, khớp đầu chuỗi và độ phủ từ khóa.
 - Hiển thị ảnh bìa bên trái, tên truyện và nguồn bên phải.
-- Cache ảnh bìa để mở lại kết quả và tủ truyện nhanh hơn.
+- Cache ảnh bìa để mở lại kết quả và tủ truyện nhanh hơn. Hỗ trợ **Tải lại ảnh bìa** thủ công.
 - Bật/tắt nguồn trong plugin.
-- Giữ tên truyện để xem mô tả hoặc thêm/xóa khỏi tủ truyện.
-- Xem danh sách chương và phân trang TruyenFull.
-- Tải các chương chưa có ở trang mục lục hiện tại.
-- Lưu truyện vào tủ truyện.
-- Nhận biết chương đã tải.
-- Mở lại, tải lại hoặc xóa từng chương.
+- Giữ tên truyện để xem mô tả, tải lại ảnh bìa, hoặc thêm/xóa khỏi tủ truyện.
+- Xem danh sách chương và phân trang dễ dàng.
+- **Tải thành 1 bộ**: Gom tất cả các chương truyện chữ thành 1 file HTML duy nhất để đọc mượt mà.
+- Lưu truyện vào tủ truyện, lưu Lịch sử đọc.
+- **Xóa hết**: Xóa sạch toàn bộ tủ truyện hoặc lịch sử đọc, kèm tùy chọn tự động dọn dẹp file đã tải để giải phóng bộ nhớ.
 - Nút `Quay lại Truyện Việt` trong menu khi đang đọc chương.
+- Gửi **Báo lỗi (Error Reporting)** lên Github trực tiếp từ Kobo nếu có sự cố.
 - Menu plugin và thư mục chương đã tải vẫn mở được khi offline.
 
 ## Ảnh chụp màn hình
@@ -110,6 +118,12 @@ truyenviet.koplugin/
       truyendich.lua
       truyenfull.lua
       truyenqq.lua
+      metruyenvn.lua
+      aztruyen.lua
+      dualeotruyenfull.lua
+      truyenc.lua
+      teenfic.lua
+      mizzya.lua
 ```
 
 Đóng gói trên Windows:

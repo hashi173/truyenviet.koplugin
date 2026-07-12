@@ -195,6 +195,7 @@ function Storage:getFavorites()
 end
 
 function Storage:isFavorite(story)
+    if not story or not story.source_id or not story.url then return false end
     return self:getFavorites()[story.source_id .. "|" .. story.url] ~= nil
 end
 
@@ -226,6 +227,39 @@ function Storage:removeFavorite(story)
     local favorites = copyTable(self:getFavorites())
     favorites[story.source_id .. "|" .. story.url] = nil
     return persistSetting(self, "favorites", favorites)
+end
+
+-- Xóa tất cả file đã tải của một truyện (dùng cho xóa hết)
+local function deleteStoryDownloads(self, story_record)
+    local source_dir = ffiutil.joinPath(self.root_dir, story_record.source_id)
+    local story_dir = ffiutil.joinPath(source_dir, Util.urlLeaf(story_record.url, "story"))
+    if lfs.attributes(story_dir, "mode") ~= "directory" then return end
+    local function rmdir(dir)
+        for file in lfs.dir(dir) do
+            if file ~= "." and file ~= ".." then
+                local fp = dir .. "/" .. file
+                if lfs.attributes(fp, "mode") == "directory" then
+                    rmdir(fp)
+                else
+                    os.remove(fp)
+                end
+            end
+        end
+        lfs.rmdir(dir)
+    end
+    pcall(rmdir, story_dir)
+end
+
+function Storage:clearAllFavorites(with_downloads)
+    self:initialize()
+    if with_downloads then
+        for _, story in pairs(self:getFavorites()) do
+            if type(story) == "table" then
+                pcall(deleteStoryDownloads, self, story)
+            end
+        end
+    end
+    return persistSetting(self, "favorites", {})
 end
 
 function Storage:listFavorites()
@@ -313,4 +347,58 @@ function Storage:removeHistory(story)
     return true
 end
 
+function Storage:clearAllHistory(with_downloads)
+    self:initialize()
+    if with_downloads then
+        for _, item in ipairs(self:getHistory()) do
+            if type(item) == "table" and type(item.story) == "table" then
+                pcall(deleteStoryDownloads, self, item.story)
+            end
+        end
+    end
+    return persistSetting(self, "history", {})
+end
+
+-- Ebook storage methods for TVE-4U and Dilib sources
+
+function Storage:getEbookDir(source, book)
+    self:initialize()
+    local source_dir = ffiutil.joinPath(self.root_dir, source.id)
+    local book_slug = Util.urlLeaf(book.url, Util.safeName(book.title, "book"))
+    local book_dir = ffiutil.joinPath(source_dir, book_slug)
+    ko_util.makePath(book_dir)
+    return book_dir
+end
+
+function Storage:getEbookPath(source, book, filename)
+    return ffiutil.joinPath(self:getEbookDir(source, book), Util.safeName(filename, "file"))
+end
+
+function Storage:isEbookDownloaded(source, book, filename)
+    local path = self:getEbookPath(source, book, filename)
+    return lfs.attributes(path, "mode") == "file", path
+end
+
+function Storage:listEbookFiles(source, book)
+    local dir = self:getEbookDir(source, book)
+    local files = {}
+    local ok = pcall(function()
+        for file in lfs.dir(dir) do
+            if file ~= "." and file ~= ".." then
+                local path = ffiutil.joinPath(dir, file)
+                local attr = lfs.attributes(path)
+                if attr and attr.mode == "file" then
+                    table.insert(files, {
+                        name = file,
+                        path = path,
+                        size = attr.size,
+                    })
+                end
+            end
+        end
+    end)
+    return files
+end
+
 return Storage
+

@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.1
+
+- Cập nhật parser cho metruyenvn, aztruyen, truyenc, giatocvuongtai, và dualeotruyenfull.
+- Thêm cờ force_luasec cho truyenqq để sửa lỗi HTTPS trên Kobo.
+- Sửa lỗi crash liên quan đến check nil trong Storage:isFavorite.
+- Sửa lỗi Cloudflare 403.
+
 ## 1.0.4
 
 - Sửa vòng đời widget để Back, tìm kiếm, lịch sử và phân trang không tạo nhiều màn hình chồng nhau.

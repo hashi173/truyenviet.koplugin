@@ -12,8 +12,23 @@ local DocumentBuilder = {}
 local function replaceFile(temp_path, final_path)
     local ok, err = os.rename(temp_path, final_path)
     if not ok then
+        -- Fallback to copy and delete if cross-device (e.g. from /tmp to eMMC)
+        local fin, fin_err = io.open(temp_path, "rb")
+        if not fin then
+            os.remove(temp_path)
+            return nil, fin_err
+        end
+        local data = fin:read("*a")
+        fin:close()
+        
+        local fout, fout_err = io.open(final_path, "wb")
+        if not fout then
+            os.remove(temp_path)
+            return nil, fout_err
+        end
+        fout:write(data)
+        fout:close()
         os.remove(temp_path)
-        return nil, err
     end
     return final_path
 end
@@ -28,6 +43,9 @@ end
 function DocumentBuilder:buildText(source, story, chapter, payload)
     local path = Storage:getChapterPath(source, story, chapter)
     local temp_path = path .. ".part"
+    if lfs.attributes("/tmp", "mode") == "directory" then
+        temp_path = "/tmp/truyenviet_temp_" .. os.time() .. "_" .. tostring(math.random(1000, 9999)) .. ".part"
+    end
     local file, err = io.open(temp_path, "wb")
     if not file then
         return nil, err
@@ -115,6 +133,9 @@ end
 function DocumentBuilder:buildComic(source, story, chapter, payload)
     local path = Storage:getChapterPath(source, story, chapter)
     local temp_path = path .. ".part"
+    if lfs.attributes("/tmp", "mode") == "directory" then
+        temp_path = "/tmp/truyenviet_temp_" .. os.time() .. "_" .. tostring(math.random(1000, 9999)) .. ".part"
+    end
     os.remove(temp_path)
 
     local archive = Archiver.Writer:new()
@@ -206,6 +227,8 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
                     else
                         Debug.write("DocumentBuilder:buildComic unsupported/failed idx=" .. tostring(index) .. " final_url=" .. tostring(final_url) .. " last_error=" .. tostring(last_error))
                         table.insert(failed_images, index)
+                        -- Use blank 1x1 PNG to prevent missing pages
+                        archive:addFileFromMemory(string.format("%04d.png", index), "\137PNG\r\n\26\n\0\0\0\13IHDR\0\0\0\1\0\0\0\1\8\6\0\0\0\31\21\196\137\0\0\0\10IDATx\156c\0\1\0\0\5\0\1\13\10\2db\0\0\0\0IEND\174B`\130", os.time())
                     end
                 end
 
@@ -222,8 +245,7 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
         end
         
         if #failed_images > 0 then
-            error(string.format("Lỗi tải %d ảnh (thành công %d/%d)", 
-                #failed_images, downloaded_count, #payload.images))
+            Debug.write(string.format("DocumentBuilder:buildComic warning: failed %d images", #failed_images))
         end
         
         return true
@@ -246,6 +268,9 @@ function DocumentBuilder:buildComic(source, story, chapter, payload)
 end
 
 function DocumentBuilder:build(source, story, chapter, payload, force)
+    if type(payload) == "string" then
+        payload = { content = payload }
+    end
     if not force then
         local existing = self:getExistingPath(source, story, chapter)
         if existing then

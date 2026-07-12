@@ -142,9 +142,14 @@ function Source:getStoryDetails(story)
     
     local description = item.summary
     if description then
-        description = description:gsub("\n", "<br/>")
+        -- Strip HTML tags and clean up description for plain text display
+        description = description:gsub("<br%s*/>", "\n"):gsub("<br>", "\n")
+        description = description:gsub("<[^>]+>", "")
+        description = description:gsub("[\xF0-\xF7][\x80-\xBF][\x80-\xBF][\x80-\xBF]", "")
+        description = description:gsub("\n%s*\n%s*\n+", "\n\n")
+        description = Util.decodeHtml(Util.trim(description))
     end
-    
+
     return {
         description = description,
         author = author,
@@ -196,7 +201,13 @@ function Source:getStoryPage(story, page)
     local author = item.author_name
     if not author and item.author then author = item.author.name end
     local description = item.summary
-    if description then description = description:gsub("\n", "<br/>") end
+    if description then
+        description = description:gsub("<br%s*/>", "\n"):gsub("<br>", "\n")
+        description = description:gsub("<[^>]+>", "")
+        description = description:gsub("[\xF0-\xF7][\x80-\xBF][\x80-\xBF][\x80-\xBF]", "")
+        description = description:gsub("\n%s*\n%s*\n+", "\n\n")
+        description = Util.decodeHtml(Util.trim(description))
+    end
     
     story.details = {
         description = description,

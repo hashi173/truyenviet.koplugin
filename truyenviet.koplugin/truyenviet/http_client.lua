@@ -140,8 +140,8 @@ local HttpClient = {
 
 local function mergeHeaders(extra)
     local headers = {
-        ["Accept"] = "*/*",
-        ["Accept-Encoding"] = "identity",
+        ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        ["Accept-Language"] = "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
         ["User-Agent"] = HttpClient.user_agent,
     }
     for key, value in pairs(extra or {}) do
@@ -153,6 +153,56 @@ end
 local function validateUrl(url)
     local parsed = socket_url.parse(url)
     return parsed and (parsed.scheme == "http" or parsed.scheme == "https")
+end
+
+-- isCloudflare/curlFallback ĐẶT Ở CẤP MODULE (không nằm trong bất kỳ hàm nào)
+-- để cả HttpClient:request (sync) lẫn HttpClient:requestAsync (async, dùng để
+-- tải cover/chapter) đều gọi được. Trước đây 2 hàm này bị dán nhầm vào NẰM
+-- BÊN TRONG thân hàm HttpClient:request, nên requestAsync gọi tới sẽ coi
+-- isCloudflare/curlFallback là biến global rỗng (nil) và luôn crash với lỗi
+-- "attempt to call global 'isCloudflare' (a nil value)" — đây là nguyên nhân
+-- khiến MỌI lần tải cover đều lỗi, làm việc vào 1 nguồn truyện "tải mãi
+-- không xong".
+local function isCloudflare(content)
+    if content and (content:find("window._cf_chl_opt", 1, true) or content:find('id="challenge%-error%-text"', 1, true) or content:find("<title>Just a moment...</title>", 1, true)) then
+        return true
+    end
+    return false
+end
+
+local function curlFallback(method, url, request_headers)
+    local function runCurl(extra_args)
+        local curl_cmd = "curl -skSL --http1.1 --noproxy \"*\"" .. (extra_args and (" " .. extra_args) or "")
+        if method and method:upper() ~= "GET" then
+            curl_cmd = curl_cmd .. string.format(' -X %s', method)
+        end
+        if not request_headers or not request_headers["User-Agent"] then
+            curl_cmd = curl_cmd .. string.format(' -H "User-Agent: %s"', HttpClient.user_agent)
+        end
+        for k, v in pairs(request_headers or {}) do
+            curl_cmd = curl_cmd .. string.format(' -H "%s: %s"', k, tostring(v):gsub('"', '\\"'))
+        end
+        curl_cmd = curl_cmd .. string.format(" '%s'", url:gsub("'", "'\\''"))
+
+        local f = io.popen(curl_cmd)
+        if not f then return nil end
+        local content = f:read("*a")
+        f:close()
+        return content
+    end
+
+    local content = runCurl()
+    if not content or content == "" then
+        content = runCurl("--ciphers DEFAULT@SECLEVEL=1")
+    end
+    if not content or content == "" then
+        return nil
+    end
+    if isCloudflare(content) then
+        Debug.write("[HTTP ERROR] Cloudflare challenge detected in curlFallback")
+        return nil, "Bị chặn bởi Cloudflare (Anti-Bot)", {}, 403, content
+    end
+    return content, nil, {}, 200
 end
 
 function HttpClient:request(method, url, body, headers, options)
@@ -186,7 +236,12 @@ function HttpClient:request(method, url, body, headers, options)
     for attempt = 1, max_retries + 1 do
         sink = {}
         ok, code, response_headers, status = pcall(function()
-            return socket.skip(1, http.request({
+            local req_func = http.request
+            if options and options.force_luasec and url:match("^https") then
+                local https = require("ssl.https")
+                req_func = https._original_request or https.request_sni or https.request
+            end
+            return socket.skip(1, req_func({
                 url = url,
                 method = method,
                 headers = request_headers,
@@ -220,12 +275,22 @@ function HttpClient:request(method, url, body, headers, options)
             break
         end
     end
+
     socketutil:reset_timeout()
 
-    if not ok then
-        Debug.write(string.format("[HTTP request exception] %s %s -> %s", method, url, tostring(code)))
-        return nil, tostring(code)
+    if not ok or response_headers == nil or code == socketutil.SSL_HANDSHAKE_CODE or code == socketutil.TIMEOUT_CODE then
+        local err_msg = not ok and tostring(code) or tostring(code)
+        Debug.write(string.format("[HTTP request fail] %s %s -> %s", method, url, err_msg))
+        
+        Debug.write("[HTTP] Attempting curl fallback...")
+        local content, err, headers, num_code = curlFallback(method, url, request_headers)
+        if content then return content, err, headers, num_code end
+        
+        if not ok then
+            return nil, err_msg
+        end
     end
+    
     if code == socketutil.TIMEOUT_CODE
             or code == socketutil.SSL_HANDSHAKE_CODE
             or code == socketutil.SINK_TIMEOUT_CODE then
@@ -250,7 +315,7 @@ function HttpClient:request(method, url, body, headers, options)
     end
 
     local content = table.concat(sink)
-    if content:find("window._cf_chl_opt", 1, true) or content:find('id="challenge%-error%-text"', 1, true) or content:find("<title>Just a moment...</title>", 1, true) then
+    if isCloudflare(content) then
         Debug.write("[HTTP ERROR] Cloudflare challenge detected in 200 OK response")
         return nil, "Bị chặn bởi Cloudflare (Anti-Bot)", response_headers, 403, content
     end
@@ -265,8 +330,8 @@ function HttpClient:request(method, url, body, headers, options)
     return content, nil, response_headers, numeric_code
 end
 
-function HttpClient:get(url, headers)
-    return self:request("GET", url, nil, headers)
+function HttpClient:get(url, headers, options)
+    return self:request("GET", url, nil, headers, options)
 end
 
 function HttpClient:postJson(url, payload, headers)
@@ -337,6 +402,19 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
         end
     end
 
+    if not ok or response_headers == nil or code == socketutil.SSL_HANDSHAKE_CODE or code == socketutil.TIMEOUT_CODE then
+        local err_msg = not ok and tostring(result) or tostring(code)
+        Debug.write(string.format("[HTTP Async request fail] %s %s -> %s", method, url, err_msg))
+        
+        Debug.write("[HTTP Async] Attempting curl fallback...")
+        local content, err, headers, num_code = curlFallback(method, url, request_headers)
+        if content then return content, err, headers, num_code end
+        
+        if not ok then
+            return nil, err_msg
+        end
+    end
+
     if not ok then
         Debug.write(string.format("[HTTP Async request exception] %s %s -> %s", method, url, tostring(result)))
         return nil, tostring(result)
@@ -364,7 +442,7 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
     end
     
     local content = table.concat(sink)
-    if content:find("window._cf_chl_opt", 1, true) or content:find('id="challenge%-error%-text"', 1, true) or content:find("<title>Just a moment...</title>", 1, true) then
+    if isCloudflare(content) then
         Debug.write("[HTTP Async ERROR] Cloudflare challenge detected in 200 OK response")
         return nil, "Bị chặn bởi Cloudflare (Anti-Bot)"
     end

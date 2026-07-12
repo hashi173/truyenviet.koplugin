@@ -6,7 +6,7 @@ local Source = {
     id = "truyenfull",
     name = "TruyenFull",
     kind = "text",
-    base_url = "https://truyenfull.today",
+    base_url = "https://truyenfull.live",
 }
 
 function Source:getCoverHeaders()
@@ -236,7 +236,7 @@ function Source:getChapter(chapter)
 end
 
 function Source:getChapterAsync(chapter)
-    local html, err = Http:requestAsync("GET", chapter.url)
+    local html, err = Http:requestAsync("GET", chapter.url, nil, nil)
     if not html then
         return nil, err
     end

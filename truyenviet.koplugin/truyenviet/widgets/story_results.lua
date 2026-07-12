@@ -50,6 +50,12 @@ function StoryItem:init()
 
     local cover_widget
     if self.story.cover_path then
+        local lfs = require("libs/libkoreader-lfs")
+        if lfs.attributes(self.story.cover_path, "mode") ~= "file" then
+            self.story.cover_path = nil
+        end
+    end
+    if self.story.cover_path then
         local ok
         ok, cover_widget = pcall(function()
             return ImageWidget:new{
@@ -59,7 +65,7 @@ function StoryItem:init()
                 scale_factor = 0,
             }
         end)
-        if not ok then
+        if not ok or not cover_widget then
             cover_widget = nil
             os.remove(self.story.cover_path)
             self.story.cover_path = nil
@@ -181,9 +187,11 @@ function StoryResults:init()
         left_icon_tap_callback = function()
             self:onClose()
         end,
-        right_icon = self.search_callback and "appbar.search" or nil,
+        right_icon = self.right_icon or (self.search_callback and "appbar.search" or nil),
         right_icon_tap_callback = function()
-            if self.search_callback then
+            if self.right_icon_tap_callback then
+                self.right_icon_tap_callback(self)
+            elseif self.search_callback then
                 self.search_callback()
             end
         end,

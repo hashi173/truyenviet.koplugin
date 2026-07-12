@@ -11,7 +11,7 @@ local CoverCache = {
 }
 
 function CoverCache:get(story)
-    if not story.cover_url then
+    if not story.cover_url or story.cover_url == "" then
         return nil
     end
     local stem = Util.stableHash(story.cover_url)
@@ -42,7 +42,7 @@ function CoverCache:download(story, source)
     if existing then
         return existing
     end
-    if not story.cover_url then
+    if not story.cover_url or story.cover_url == "" then
         return nil
     end
 
@@ -51,7 +51,14 @@ function CoverCache:download(story, source)
     }
     headers["Accept"] = "image/webp,image/apng,image/*,*/*;q=0.8"
 
-    local content, err, response_headers = Http:requestAsync("GET", story.cover_url, nil, headers)
+    -- Một số nguồn (vd truyenc.com) trả cover_url có khoảng trắng chưa được
+    -- encode (vd "...Phan 2-Quy-Co-Nu.jpg") -> server trả 400 Bad Request vì
+    -- URL có khoảng trắng thô là không hợp lệ. Encode khoảng trắng thành %20
+    -- trước khi gửi request (chỉ encode dấu cách, giữ nguyên phần còn lại vì
+    -- URL này thường đã encode sẵn các ký tự khác).
+    local request_url = story.cover_url:gsub(" ", "%%20")
+
+    local content, err, response_headers = Http:requestAsync("GET", request_url, nil, headers)
     if not content then
         return nil, err
     end

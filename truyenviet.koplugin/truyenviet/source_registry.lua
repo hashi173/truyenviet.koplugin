@@ -11,6 +11,13 @@ local BUILTIN_SOURCES = {
     require("truyenviet/sources/haccbl"),
     require("truyenviet/sources/giatocvuongtai"),
     require("truyenviet/sources/docln"),
+    require("truyenviet/sources/tve4u"),
+    require("truyenviet/sources/dilib"),
+    require("truyenviet/sources/mizzya"),
+    require("truyenviet/sources/metruyenvn"),
+    require("truyenviet/sources/aztruyen"),
+    require("truyenviet/sources/dualeotruyenfull"),
+    require("truyenviet/sources/truyenc"),
 }
 
 local SOURCES_BY_ID = {}
@@ -27,6 +34,7 @@ local function applyBaseUrl(source)
 end
 
 function SourceRegistry:get(source_id)
+    if not source_id then return nil end
     local source = SOURCES_BY_ID[source_id]
     if source then
         applyBaseUrl(source)

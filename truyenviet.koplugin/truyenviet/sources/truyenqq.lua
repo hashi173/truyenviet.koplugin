@@ -10,12 +10,32 @@ local Source = {
     reversed_chapters = true,
 }
 
-local function requestHeaders()
+-- LƯU Ý (12/07/2026): log thực tế cho thấy lỗi "redirect not supported" xảy ra
+-- khi tải trang danh sách bình thường (/truyen-hoan-thanh...) — không phải API.
+-- Trước đây header X-Requested-With: XMLHttpRequest (dấu hiệu gọi AJAX) bị gửi
+-- trên MỌI request, kể cả tải trang HTML thường. Việc "giả AJAX" cho request
+-- tải trang có thể khiến server xử lý khác đi (ví dụ redirect sang trang khác)
+-- so với truy cập trang bình thường. Tách riêng: pageHeaders() cho tải trang
+-- HTML thường (không có X-Requested-With), ajaxHeaders() chỉ dùng cho đúng 1
+-- endpoint AJAX thật là /frontend/search/search.
+local function pageHeaders()
     return {
+        ["User-Agent"] = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         ["Referer"] = Source.base_url .. "/",
-        ["X-Requested-With"] = "XMLHttpRequest",
+        ["Accept-Language"] = "vi-VN,vi;q=0.9,en;q=0.7",
     }
 end
+
+local function ajaxHeaders()
+    local h = pageHeaders()
+    h["X-Requested-With"] = "XMLHttpRequest"
+    return h
+end
+
+-- Giữ tên cũ `requestHeaders` trỏ về `pageHeaders` để không phải sửa lại từng
+-- chỗ gọi bên dưới — chỉ có `search()` (endpoint AJAX thật) mới cần đổi sang
+-- `ajaxHeaders()`.
+local requestHeaders = pageHeaders
 
 function Source:getCoverHeaders()
     return requestHeaders()
@@ -51,7 +71,8 @@ function Source:search(query)
     local html, err = Http:postForm(
         self.base_url .. "/frontend/search/search",
         { search = query, type = 0 },
-        requestHeaders()
+        ajaxHeaders(),
+        { force_luasec = true }
     )
     if not html then
         return nil, err
@@ -108,7 +129,7 @@ function Source:getCompleted(page)
     if page > 1 then
         url = url .. "/trang-" .. page .. "?status=2"
     end
-    local html, err = Http:get(url, requestHeaders())
+    local html, err = Http:get(url, requestHeaders(), { force_luasec = true })
     if not html then
         return nil, err
     end
@@ -123,7 +144,7 @@ function Source:getGenre(genre, page)
     if page > 1 then
         url = url .. "/trang-" .. page
     end
-    local html, err = Http:get(url, requestHeaders())
+    local html, err = Http:get(url, requestHeaders(), { force_luasec = true })
     if not html then
         return nil, err
     end
@@ -167,7 +188,7 @@ function Source:parseStoryDetails(html)
 end
 
 function Source:getStoryDetails(story)
-    local html, err = Http:get(story.url, requestHeaders())
+    local html, err = Http:get(story.url, requestHeaders(), { force_luasec = true })
     if not html then
         return nil, err
     end
@@ -231,7 +252,7 @@ function Source:parseStoryPage(html, story)
 end
 
 function Source:getStoryPage(story)
-    local html, err = Http:get(story.url, requestHeaders())
+    local html, err = Http:get(story.url, requestHeaders(), { force_luasec = true })
     if not html then
         return nil, err
     end
@@ -307,7 +328,7 @@ function Source:parseChapter(html, chapter)
 end
 
 function Source:getChapter(chapter)
-    local html, err = Http:get(chapter.url, requestHeaders())
+    local html, err = Http:get(chapter.url, requestHeaders(), { force_luasec = true })
     if not html then
         return nil, err
     end

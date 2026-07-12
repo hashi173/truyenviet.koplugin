@@ -27,7 +27,9 @@ function ChapterDownloader:download(source, story, chapters)
     }
 
     if source.kind == "comic" or type(source.getChapterAsync) ~= "function" then
-        for _, chapter in ipairs(chapters or {}) do
+        local total_chaps = chapters and #chapters or 0
+        for i, chapter in ipairs(chapters or {}) do
+            coroutine.yield(string.format("Đang tải %d/%d chương...", i, total_chaps))
             if Storage:isDownloaded(source, story, chapter) then
                 result.skipped = result.skipped + 1
             else
@@ -115,6 +117,10 @@ function ChapterDownloader:download(source, story, chapters)
 
                     if path then
                         result.downloaded = result.downloaded + 1
+                        if result.downloaded == 1 and G_reader_settings and G_reader_settings.addDocument then
+                            G_reader_settings:addDocument(path)
+                            G_reader_settings:flush()
+                        end
                     else
                         os.remove(Storage:getChapterPath(source, story, chapter) .. ".part")
                         table.insert(result.errors, string.format(
@@ -128,13 +134,15 @@ function ChapterDownloader:download(source, story, chapters)
             end
             
             if active_downloads > 0 then
-                copas.step()
+                copas.step(0)
             end
+            coroutine.yield(string.format("Đang lấy chương... còn %d chương", active_downloads))
             collectgarbage()
         end
 
         while active_downloads > 0 do
-            copas.step()
+            copas.step(0)
+            coroutine.yield(string.format("Đang tải %d chương...", active_downloads))
         end
     end
 

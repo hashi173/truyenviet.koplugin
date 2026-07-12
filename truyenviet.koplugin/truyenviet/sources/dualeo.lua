@@ -52,7 +52,7 @@ local Source = {
     id = "dualeo",
     name = "Dưa Leo Truyện",
     kind = "comic",
-    base_url = "https://dualeotruyenpt.com",
+    base_url = "https://dualeotruyenhn.com",
     reversed_chapters = true,
 }
 
