@@ -268,33 +268,20 @@ function Browser:showErrorReportDialog(error_msg, on_close)
                     end,
                 },
                 {
-                    text = "Gửi log",
+                    text = "Chép log",
                     callback = function()
                         local user_desc = dialog:getInputValue()
                         closeAndRun(dialog, function()
-                            local res, err = withLoading("Đang gửi báo cáo...", function()
-                                local success, result = false, nil
-                                ErrorReporter:submit(user_desc, error_msg, true, function(ok, val)
-                                    success = ok
-                                    result = val
-                                end)
-                                -- Note: since we're using socket.http, it's blocking
-                                if success then
-                                    ErrorReporter:clearLogAfterSubmit()
-                                    return result
-                                else
-                                    error(result)
-                                end
-                            end)
-                            
-                            if res then
-                                UIManager:show(InfoMessage:new{
-                                    text = "Đã gửi báo cáo thành công! Mã lỗi: #" .. tostring(res)
-                                })
+                            local ok, msg = ErrorReporter:copyReportToClipboard(user_desc, error_msg, true)
+                            if ok then
+                                ErrorReporter:clearLogAfterSubmit()
+                                require("ui/widget/infomessage"):new({
+                                    text = msg,
+                                }):show()
                             else
-                                UIManager:show(InfoMessage:new{
-                                    text = "Lỗi khi gửi báo cáo: " .. tostring(err)
-                                })
+                                require("ui/widget/infomessage"):new({
+                                    text = "Lỗi chép log: " .. tostring(msg),
+                                }):show()
                             end
                             if on_close then UIManager:nextTick(on_close) end
                         end)

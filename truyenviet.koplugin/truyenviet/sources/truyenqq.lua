@@ -20,7 +20,6 @@ local Source = {
 -- endpoint AJAX thật là /frontend/search/search.
 local function pageHeaders()
     return {
-        ["User-Agent"] = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         ["Referer"] = Source.base_url .. "/",
         ["Accept-Language"] = "vi-VN,vi;q=0.9,en;q=0.7",
     }
@@ -306,7 +305,7 @@ function Source:parseChapter(html, chapter)
     end
 
     if #images == 0 then
-        return nil, "Không tìm thấy ảnh của chương"
+        return nil, "Không tìm thấy ảnh của chương (kiểm tra lại tên miền TruyenQQ trong Cài đặt, có thể bạn đã nhập tên miền truyện chữ vào nguồn truyện tranh)"
     end
 
     local title

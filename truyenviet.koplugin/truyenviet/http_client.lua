@@ -135,7 +135,7 @@ end
 local HttpClient = {
     connect_timeout = 15,
     total_timeout = 60,
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    user_agent = "Mozilla/5.0 (Linux; Android 13) KOReader TruyenViet/0.1",
 }
 
 local function mergeHeaders(extra)
@@ -163,6 +163,30 @@ end
 -- "attempt to call global 'isCloudflare' (a nil value)" — đây là nguyên nhân
 -- khiến MỌI lần tải cover đều lỗi, làm việc vào 1 nguồn truyện "tải mãi
 -- không xong".
+-- Tìm ra nguyên nhân thật của lỗi "400 Problems parsing JSON" khi gửi báo lỗi
+-- lên GitHub (13/07/2026): file log debug ghi thẳng NỘI DUNG NHỊ PHÂN THÔ của
+-- response (ảnh .webp/.jpg...) vào file text log. Khi trích log để gửi báo
+-- cáo, các byte điều khiển/UTF-8 hỏng lẫn trong đó phá vỡ cấu trúc JSON gửi
+-- lên GitHub. Sửa tận gốc: không ghi thẳng bytes nhị phân vào log nữa, chỉ ghi
+-- loại nội dung + kích thước nếu không phải text.
+local function safeLogPreview(content, response_headers, max_len)
+    max_len = max_len or 100
+    local content_type = ""
+    if response_headers then
+        content_type = tostring(response_headers["content-type"] or ""):lower()
+    end
+    local is_text = content_type == ""
+        or content_type:find("text/", 1, true)
+        or content_type:find("json", 1, true)
+        or content_type:find("xml", 1, true)
+        or content_type:find("javascript", 1, true)
+        or content_type:find("urlencoded", 1, true)
+    if not is_text then
+        return string.format("[nhị phân, %s, %d bytes - không ghi log]", content_type ~= "" and content_type or "?", #content)
+    end
+    return content:sub(1, max_len)
+end
+
 local function isCloudflare(content)
     if content and (content:find("window._cf_chl_opt", 1, true) or content:find('id="challenge%-error%-text"', 1, true) or content:find("<title>Just a moment...</title>", 1, true)) then
         return true
@@ -247,31 +271,37 @@ function HttpClient:request(method, url, body, headers, options)
                 headers = request_headers,
                 source = body and ltn12.source.string(body) or nil,
                 sink = ltn12.sink.table(sink),
-                redirect = redirect,
+                redirect = false,
             }))
         end)
 
+        local retry = false
         if not ok then
-            break
-        end
-        if code == socketutil.TIMEOUT_CODE
+            local err_str = tostring(code)
+            if err_str:find("wantread") or err_str:find("timeout") or err_str:find("closed") then
+                retry = true
+            end
+        elseif code == socketutil.TIMEOUT_CODE
                 or code == socketutil.SSL_HANDSHAKE_CODE
                 or code == socketutil.SINK_TIMEOUT_CODE then
-            break
-        end
-        if response_headers == nil then
-            break
+            retry = true
+        elseif response_headers ~= nil then
+            local numeric_code = tonumber(code)
+            if numeric_code == 429 then
+                retry = true
+            end
         end
 
-        local numeric_code = tonumber(code)
-        if numeric_code == 429 and attempt <= max_retries then
-            Debug.write(string.format("[HTTP 429] Retry attempt %d after %d seconds", attempt, delay))
+        if retry and attempt <= max_retries then
+            Debug.write(string.format("[HTTP] Retry attempt %d after error: %s", attempt, tostring(code)))
             socket.select(nil, nil, delay)
             delay = delay * 2
         else
-            result_code = numeric_code
-            result_headers = response_headers
-            result_status = status
+            if ok and response_headers ~= nil then
+                result_code = tonumber(code)
+                result_headers = response_headers
+                result_status = status
+            end
             break
         end
     end
@@ -310,7 +340,30 @@ function HttpClient:request(method, url, body, headers, options)
 
     if not numeric_code or numeric_code < 200 or numeric_code >= 300 then
         local error_body = table.concat(sink)
-        Debug.write(string.format("  Resp Error Body (len=%d): %s", #error_body, error_body:sub(1, 500)))
+        Debug.write(string.format("  Resp Error Body (len=%d): %s", #error_body, safeLogPreview(error_body, response_headers, 500)))
+        
+        if redirect ~= false and numeric_code and numeric_code >= 300 and numeric_code < 400 and response_headers["location"] then
+            local new_url = response_headers["location"]
+            if not new_url:match("^https?://") then
+                new_url = socket_url.absolute(url, new_url)
+            end
+            local redirect_count = (options and options.redirect_count or 0) + 1
+            if redirect_count <= 5 then
+                Debug.write(string.format("[HTTP] Redirecting to %s (attempt %d)", new_url, redirect_count))
+                local new_opts = {}
+                if options then for k,v in pairs(options) do new_opts[k] = v end end
+                new_opts.redirect_count = redirect_count
+                local new_method = method
+                if numeric_code == 303 or numeric_code == 301 or numeric_code == 302 then
+                    new_method = "GET"
+                end
+                return self:request(new_method, new_url, new_method == "GET" and nil or body, headers, new_opts)
+            else
+                Debug.write("[HTTP ERROR] Too many redirects")
+                return nil, "Quá nhiều lần chuyển hướng", response_headers, numeric_code, error_body
+            end
+        end
+
         return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code)), response_headers, numeric_code, error_body
     end
 
@@ -320,7 +373,7 @@ function HttpClient:request(method, url, body, headers, options)
         return nil, "Bị chặn bởi Cloudflare (Anti-Bot)", response_headers, 403, content
     end
 
-    Debug.write(string.format("  Resp Body (len=%d): %s", #content, content:sub(1, 100)))
+    Debug.write(string.format("  Resp Body (len=%d): %s", #content, safeLogPreview(content, response_headers, 100)))
     local content_length = tonumber(response_headers["content-length"])
     if content_length and #content ~= content_length then
         Debug.write(string.format("[HTTP ERROR] Incomplete body: expected %d, got %d", content_length, #content))
@@ -378,26 +431,41 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
             headers = request_headers,
             source = body and ltn12.source.string(body) or nil,
             sink = ltn12.sink.table(sink),
-            redirect = true,
+            redirect = false,
             timeout = req_timeout
         }
         ok, result, code, response_headers, status = pcall(function()
             return copas_http.request(reqt)
         end)
 
-        if not ok or not result then
-            break
+        local retry = false
+        if not ok then
+            local err_str = tostring(result)
+            if err_str:find("wantread") or err_str:find("timeout") or err_str:find("closed") then
+                retry = true
+            end
+        elseif not result then
+            local err_str = tostring(code)
+            if err_str:find("wantread") or err_str:find("timeout") or err_str:find("closed") then
+                retry = true
+            end
+        elseif response_headers ~= nil then
+            local numeric_code = tonumber(code)
+            if numeric_code == 429 then
+                retry = true
+            end
         end
 
-        local numeric_code = tonumber(code)
-        if numeric_code == 429 and attempt <= max_retries then
-            Debug.write(string.format("[HTTP Async 429] Retry attempt %d after %d seconds", attempt, delay))
+        if retry and attempt <= max_retries then
+            Debug.write(string.format("[HTTP Async] Retry attempt %d after error: %s", attempt, tostring(result or code)))
             copas.sleep(delay)
             delay = delay * 2
         else
-            result_code = numeric_code
-            result_headers = response_headers
-            result_status = status
+            if ok and result and response_headers ~= nil then
+                result_code = tonumber(code)
+                result_headers = response_headers
+                result_status = status
+            end
             break
         end
     end
@@ -437,7 +505,34 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
 
     if not numeric_code or numeric_code < 200 or numeric_code >= 300 then
         local error_body = table.concat(sink)
-        Debug.write(string.format("  Resp Error Body (len=%d): %s", #error_body, error_body:sub(1, 500)))
+        Debug.write(string.format("  Resp Error Body (len=%d): %s", #error_body, safeLogPreview(error_body, response_headers, 500)))
+        
+        local redirect = true
+        if type(opts) == "table" and opts.redirect ~= nil then
+            redirect = opts.redirect
+        end
+        if redirect ~= false and numeric_code and numeric_code >= 300 and numeric_code < 400 and response_headers["location"] then
+            local new_url = response_headers["location"]
+            if not new_url:match("^https?://") then
+                new_url = socket_url.absolute(url, new_url)
+            end
+            local redirect_count = (opts and opts.redirect_count or 0) + 1
+            if redirect_count <= 5 then
+                Debug.write(string.format("[HTTP Async] Redirecting to %s (attempt %d)", new_url, redirect_count))
+                local new_opts = {}
+                if opts then for k,v in pairs(opts) do new_opts[k] = v end end
+                new_opts.redirect_count = redirect_count
+                local new_method = method
+                if numeric_code == 303 or numeric_code == 301 or numeric_code == 302 then
+                    new_method = "GET"
+                end
+                return self:requestAsync(new_method, new_url, new_method == "GET" and nil or body, headers, new_opts)
+            else
+                Debug.write("[HTTP Async ERROR] Too many redirects")
+                return nil, "Quá nhiều lần chuyển hướng"
+            end
+        end
+
         return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code))
     end
     
@@ -447,7 +542,7 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
         return nil, "Bị chặn bởi Cloudflare (Anti-Bot)"
     end
 
-    Debug.write(string.format("  Resp Body (len=%d): %s", #content, content:sub(1, 100)))
+    Debug.write(string.format("  Resp Body (len=%d): %s", #content, safeLogPreview(content, response_headers, 100)))
     return content, nil, response_headers, numeric_code
 end
 

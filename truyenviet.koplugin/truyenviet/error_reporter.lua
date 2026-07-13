@@ -64,7 +64,11 @@ local function clearLog()
     os.remove(logpath)
 end
 
--- Escape chuỗi để nhúng vào JSON
+-- Escape chuỗi để nhúng vào JSON. Sửa 13/07/2026: trước đây chỉ escape 5 ký
+-- tự (\ " \n \r \t) nên khi log lẫn byte nhị phân/điều khiển khác (ví dụ do
+-- log ảnh trước đây) thì JSON gửi lên GitHub bị hỏng cấu trúc -> lỗi 400
+-- "Problems parsing JSON". Giờ escape/loại bỏ TOÀN BỘ ký tự điều khiển
+-- (0x00-0x1F trừ những cái đã escape ở trên, và 0x7F) để chắc chắn JSON hợp lệ.
 local function jsonString(s)
     s = tostring(s or "")
     s = s:gsub("\\", "\\\\")
@@ -72,6 +76,8 @@ local function jsonString(s)
     s = s:gsub("\n", "\\n")
     s = s:gsub("\r", "\\r")
     s = s:gsub("\t", "\\t")
+    -- loại bỏ mọi ký tự điều khiển còn sót lại (kể cả byte nhị phân rác)
+    s = s:gsub("[\0-\8\11\12\14-\31\127]", "")
     return s
 end
 
@@ -175,6 +181,33 @@ end
 -- Xóa log sau khi đã gửi thành công
 function ErrorReporter:clearLogAfterSubmit()
     clearLog()
+end
+
+-- CÁCH AN TOÀN HƠN, KHÔNG CẦN TOKEN (thêm 13/07/2026 theo yêu cầu): nhúng
+-- token cá nhân vào code phân phối cho người dùng là không an toàn — bất kỳ
+-- ai cài plugin đều đọc được file .lua và lấy token ra dùng dưới danh nghĩa
+-- tác giả (đã xảy ra: token bị lộ và GitHub báo "Bad credentials"/hết hạn
+-- nhiều lần). Hàm này KHÔNG dùng token: build sẵn nội dung báo cáo (markdown)
+-- rồi copy vào clipboard bằng API clipboard thật của KOReader
+-- (Device.input.setClipboardText, xác nhận từ source KOReader thật), để
+-- người dùng tự dán vào GitHub Issue (hoặc kênh khác) theo cách thủ công.
+-- Nơi gọi hàm này (ví dụ browser.lua) nên hiển thị thông báo hướng dẫn dán
+-- vào đâu sau khi copy xong.
+function ErrorReporter:copyReportToClipboard(user_desc, error_msg, with_log)
+    local log_content = with_log and readLog() or ""
+    local body_md = buildIssueBody(user_desc, error_msg, log_content, with_log)
+
+    local ok, Device = pcall(require, "device")
+    if not ok or not Device or not Device.input or not Device.input.setClipboardText then
+        return false, "Thiết bị này không hỗ trợ sao chép vào clipboard."
+    end
+
+    local ok_copy = pcall(Device.input.setClipboardText, body_md)
+    if not ok_copy then
+        return false, "Không thể sao chép vào clipboard."
+    end
+
+    return true, body_md
 end
 
 return ErrorReporter

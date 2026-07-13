@@ -11,7 +11,6 @@ local Source = {
 
 local function stdHeaders(base_url)
     return {
-        ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         ["Referer"] = base_url .. "/",
     }
 end
@@ -193,11 +192,15 @@ function Source:getStoryPage(story, page)
     local seen = {}
     
     local story_path = story.url:gsub("^https?://[^/]+", "")
-    local pattern = '<a[^>]+href="(https?://aztruyen%.top' .. story_path:gsub("%-", "%%-") .. 'chuong[^"]+)"[^>]*title="([^"]+)"'
+    story_path = story_path:gsub("/$", "")
     
     local all_matches = {}
-    for href, title in html:gmatch(pattern) do
-        table.insert(all_matches, {href = href, title = title})
+    for anchor in html:gmatch('<a%s+[^>]*>') do
+        local href = anchor:match('href="(https?://aztruyen%.top' .. story_path:gsub("%-", "%%-") .. '/chuong[^"]+)"')
+        local title = anchor:match('title="([^"]+)"')
+        if href and title then
+            table.insert(all_matches, {href = href, title = title})
+        end
     end
 
     local reversed_chapters = {}

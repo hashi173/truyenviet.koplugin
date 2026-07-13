@@ -25,7 +25,7 @@ function Source:parseSearch(html)
         if not heading_start then
             break
         end
-        if heading_attrs:find("truyen-title", 1, true) then
+        if heading_attrs:find("truyen%-title") or heading_attrs:find("itemprop") then
             local anchor = heading_html:match("(<a[^>]*>)")
             local href = Util.getAttribute(anchor, "href")
             local title = Util.getAttribute(anchor, "title") or Util.stripTags(heading_html)
@@ -45,6 +45,21 @@ function Source:parseSearch(html)
             end
         end
         position = heading_end + 1
+    end
+
+    if #stories == 0 then
+        local error_msg = "Lỗi Parse 0 truyện, HTML size: " .. tostring(#html)
+        if html:find("Cloudflare", 1, true) or html:find("Just a moment", 1, true) then
+            error_msg = error_msg .. " - Bị Cloudflare block"
+        elseif html:find("truyen%-title") or html:find("itemprop") then
+            error_msg = error_msg .. " - Có tag nhưng parse lỗi"
+        end
+        table.insert(stories, {
+            source_id = self.id,
+            title = error_msg,
+            url = self.base_url,
+            kind = self.kind,
+        })
     end
 
     return Util.uniqueBy(stories, "url")

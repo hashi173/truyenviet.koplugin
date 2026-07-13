@@ -53,7 +53,6 @@ end
 
 local function stdHeaders(base_url)
     return {
-        ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         ["Referer"] = base_url .. "/",
     }
 end
@@ -237,9 +236,25 @@ function Source:getStoryPage(story, page)
     -- thật khi test.
     local chapters = {}
     local seen = {}
+    
+    local story_slug = story.url:match("/truyen/([^/]+)")
+    local base_slug = ""
+    if story_slug then
+        base_slug = story_slug:gsub("%-%d+$", "")
+    end
+    
+    local pattern = 'href="(https?://truyenc%.com/truyen/[^"]+/chuong%-[^"]+)"'
+    if base_slug ~= "" then
+        pattern = 'href="(https?://truyenc%.com/truyen/' .. base_slug:gsub("%-", "%%-") .. '/[^"]+)"'
+    end
+    
     local all_matches = {}
-    for href, title in html:gmatch('<a[^>]+href="(https?://truyenc%.com/truyen/[^"]+/chuong%-[^"]+)"[^>]*title="([^"]+)"') do
-        table.insert(all_matches, {href = href, title = title})
+    for anchor in html:gmatch('<a%s+[^>]*>') do
+        local href = anchor:match(pattern)
+        local title = anchor:match('title="([^"]+)"')
+        if href and title then
+            table.insert(all_matches, {href = href, title = title})
+        end
     end
 
     local reversed_chapters = {}
