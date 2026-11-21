@@ -40,6 +40,32 @@ local function addStory(stories, href, title, cover_url)
     })
 end
 
+local function normalizeCoverUrl(url)
+    if url and url:find(".avif", 1, true) then
+        return url:gsub("^https?://", "https://i0.wp.com/") .. "?strip=info&format=webp"
+    end
+    return url
+end
+
+-- WP Rocket converts inline scripts (InitMangaData / InitMangaEncryptedChapter) into data: URIs.
+local function expandEmbeddedScripts(html)
+    if type(html) ~= "string" or not html:find("data:text/javascript", 1, true) then
+        return html
+    end
+    return (html:gsub("<script([^>]*)>([%s%S]-)</script>", function(attrs)
+        local src = Util.getAttribute(attrs, "src")
+        local b64 = src and src:match("^data:text/javascript[^,]*;base64,([A-Za-z0-9+/=%s]+)$")
+        if not b64 then
+            return nil
+        end
+        local decoded = Util.decodeBase64(b64)
+        if decoded == "" then
+            return nil
+        end
+        return "<script>" .. decoded .. "</script>"
+    end))
+end
+
 -- Ảnh bìa haccbl thường là AVIF (KOReader không hỗ trợ).
 -- Ưu tiên lấy URL .webp từ srcset nếu có.
 local function pickCoverUrl(image_tag)
@@ -69,10 +95,7 @@ local function pickCoverUrl(image_tag)
         final_url = Util.getAttribute(image_tag, "src") or Util.getAttribute(image_tag, "data-src")
     end
     if final_url then
-        final_url = Util.absoluteUrl(Source.base_url, final_url)
-        if final_url:find(".avif", 1, true) then
-            final_url = final_url:gsub("^https?://", "https://i0.wp.com/") .. "?strip=info&format=webp"
-        end
+        final_url = normalizeCoverUrl(Util.absoluteUrl(Source.base_url, final_url))
     end
     return final_url
 end
@@ -102,13 +125,17 @@ function Source:parseSearch(html)
     return Util.uniqueBy(stories, "url")
 end
 
+function Source:parseSearchJson(raw_json)
+    return Util.parseInitliseSearchJson(raw_json, self, normalizeCoverUrl)
+end
+
 function Source:search(query)
-    local url = self.base_url .. "/?s=" .. ko_util.urlEncode(query)
-    local html, err = Http:get(url, requestHeaders())
-    if not html then
+    local url = self.base_url .. "/wp-json/initlise/v1/search?term=" .. ko_util.urlEncode(query)
+    local body, err = Http:getJson(url, requestHeaders())
+    if not body then
         return nil, err
     end
-    return self:parseSearch(html)
+    return self:parseSearchJson(body)
 end
 local function parseGenreLinks(html)
     local genres = {}
@@ -144,14 +171,7 @@ end
 function Source:parseListing(html, page)
     local stories = self:parseSearch(html)
     local genres = parseGenreLinks(html)
-
-    local max_page = page or 1
-    for p_num in html:gmatch('page/(%d+)/"') do
-        local n = tonumber(p_num)
-        if n and n > max_page then
-            max_page = n
-        end
-    end
+    local max_page = Util.maxPage(html, page or 1)
 
     return {
         stories = stories,
@@ -214,11 +234,7 @@ function Source:parseStoryDetails(html)
         end
     end
     
-    local cover_url = html:match('<meta property="og:image" content="([^"]+)"')
-    -- Dùng proxy i0.wp.com để chuyển AVIF sang WEBP
-    if cover_url and cover_url:find(".avif", 1, true) then
-        cover_url = cover_url:gsub("^https?://", "https://i0.wp.com/") .. "?strip=info&format=webp"
-    end
+    local cover_url = normalizeCoverUrl(html:match('<meta property="og:image" content="([^"]+)"'))
 
     return {
         description = Util.stripTags(description_html)
@@ -245,16 +261,26 @@ end
 
 function Source:parseStoryPage(html, story, page)
     local chapters = {}
-    
+    local chapter_scope = html:match('id="chapter%-list"([%s%S]-)<div[^>]-id="comments"')
+        or html:match('id="chapter%-list"([%s%S]*)$')
+        or html
+
+    local function isChapterHref(href)
+        if not href or href:find("#", 1, true) or href:find("/chapter/page/", 1, true) then
+            return false
+        end
+        return href:find("chapter", 1, true) ~= nil or href:find("chuong", 1, true) ~= nil
+    end
+
     -- Parse init-manga style chapter items directly from HTML
-    for item_html in html:gmatch('<div[^>]-class="[^"]*chapter%-item[^"]*"[^>]*>([%s%S]-)</div>') do
+    for item_html in chapter_scope:gmatch('<div[^>]-class="[^"]*chapter%-item[^"]*"[^>]*>([%s%S]-)</div>') do
         local href = item_html:match('href="([^"]+)"')
         local title = item_html:match('<span[^>]-class="[^"]*chapter%-name[^"]*"[^>]*>([%s%S]-)</span>')
             or item_html:match('<h3[^>]*>([%s%S]-)</h3>')
             or (href and href:match("chapter%-([%d%.]+)") and ("Chapter " .. href:match("chapter%-([%d%.]+)")))
             or "Chapter"
-        
-        if href and (href:find("chapter") or href:find("chuong")) then
+
+        if isChapterHref(href) then
             table.insert(chapters, {
                 title = Util.stripTags(title):gsub("^%s*", ""):gsub("%s*$", ""),
                 url = Util.absoluteUrl(self.base_url, href),
@@ -267,9 +293,9 @@ function Source:parseStoryPage(html, story, page)
 
     -- Fallback: find anchors directly inside chapter-list (now searching entire html)
     if #chapters == 0 then
-        for anchor_attrs, anchor_html in html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
+        for anchor_attrs, anchor_html in chapter_scope:gmatch("<a([^>]*)>([%s%S]-)</a>") do
             local href = Util.getAttribute(anchor_attrs, "href")
-            if href and (href:find("/chapter") or href:find("/chuong")) and not href:find("#") then
+            if isChapterHref(href) and (href:find("/chapter", 1, true) or href:find("/chuong", 1, true)) then
                 local title = anchor_html:match(
                     '<h3[^>]*>([%s%S]-)</h3>'
                 ) or anchor_html
@@ -289,7 +315,7 @@ function Source:parseStoryPage(html, story, page)
         for anchor_attrs, anchor_html in html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
             local href = Util.getAttribute(anchor_attrs, "href")
             local class_attr = Util.getAttribute(anchor_attrs, "class") or ""
-            if href and (href:find("/chapter") or class_attr:find("chapter")) and not href:find("#") then
+            if isChapterHref(href) and (href:find("/chapter", 1, true) or class_attr:find("chapter", 1, true)) then
                 local title = anchor_html:match(
                     '<h3[^>]-class="[^"]*uk%-link%-heading[^"]*"[^>]*>([%s%S]-)</h3>'
                 ) or anchor_html
@@ -305,9 +331,12 @@ function Source:parseStoryPage(html, story, page)
         end
     end
 
-    local total_pages = Util.maxPage(html, 1)
+    local total_pages = Util.maxPage(html, page or 1)
 
     story.details = self:parseStoryDetails(html)
+    if story.details and story.details.cover_url and not story.cover_url then
+        story.cover_url = story.details.cover_url
+    end
     return {
         story = story,
         chapters = Util.uniqueBy(chapters, "url"),
@@ -318,18 +347,49 @@ end
 
 function Source:getStoryPage(story, page)
     page = page or 1
-    local url = story.url
-    if page > 1 then
-        url = Util.withTrailingSlash(url) .. "chapter/page/" .. page .. "/"
-    end
+    local base_story_url = Util.withTrailingSlash(story.url)
+    local url = page > 1 and (base_story_url .. "chapter/page/" .. page .. "/") or story.url
     local html, err = Http:get(url, requestHeaders())
     if not html then
         return nil, err
     end
-    return self:parseStoryPage(html, story, page)
+    local result = self:parseStoryPage(html, story, page)
+    -- Hắc Ám Chi Các chỉ hiển thị ~24 chương mỗi trang (/chapter/page/N/).
+    -- Khi mở trang 1 của truyện có nhiều trang (<= 20 trang, tức ~480 chương),
+    -- tự động gom đủ toàn bộ các trang chương để mục lục KOReader hiển thị đầy đủ.
+    if page == 1 and result.total_pages > 1 and result.total_pages <= 20 then
+        local all_chapters = {}
+        for _, ch in ipairs(result.chapters) do
+            table.insert(all_chapters, ch)
+        end
+        local max_pages = result.total_pages
+        local p = 2
+        while p <= max_pages and p <= 20 do
+            local sub_url = base_story_url .. "chapter/page/" .. p .. "/"
+            local sub_html = Http:get(sub_url, requestHeaders())
+            if not sub_html then
+                break
+            end
+            local sub_data = self:parseStoryPage(sub_html, story, p)
+            if not sub_data or not sub_data.chapters or #sub_data.chapters == 0 then
+                break
+            end
+            for _, ch in ipairs(sub_data.chapters) do
+                table.insert(all_chapters, ch)
+            end
+            if sub_data.total_pages and sub_data.total_pages > max_pages then
+                max_pages = math.min(sub_data.total_pages, 20)
+            end
+            p = p + 1
+        end
+        result.chapters = Util.uniqueBy(all_chapters, "url")
+        result.total_pages = 1
+    end
+    return result
 end
 
 function Source:parseChapter(html, chapter)
+    html = expandEmbeddedScripts(html)
     local images = {}
 
     local content = html:match(
@@ -478,26 +538,10 @@ function Source:parseChapter(html, chapter)
                     end))
                 end
 
-                local function base64_decode(data)
-                    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-                    data = string.gsub(data, '[^'..b..'=]', '')
-                    return (data:gsub('.', function(x)
-                        if (x == '=') then return '' end
-                        local r,f='',(b:find(x)-1)
-                        for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
-                        return r;
-                    end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-                        if (#x ~= 8) then return '' end
-                        local c=0
-                        for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
-                        return string.char(c)
-                    end))
-                end
-
-                local keyStr = base64_decode(keyStrBase64)
+                local keyStr = Util.decodeBase64(keyStrBase64)
                 local salt = hex2bin(saltHex)
                 local iv = hex2bin(ivHex)
-                local cipherbin = base64_decode(ciphertext)
+                local cipherbin = Util.decodeBase64(ciphertext)
                 local decrypt_ok = false
 
                 if crypto_status and libcrypto then
@@ -619,7 +663,7 @@ function Source:parseChapter(html, chapter)
                 and not url:find("cropped%-icon", 1, false)
                 and not url:find("avatar", 1, true)
                 and not url:find("gravatar", 1, true) then
-            if url:find("%.avif", 1, true) then
+            if url:find(".avif", 1, true) then
                 url = url:gsub("^https?://", "https://i0.wp.com/") .. "?strip=info"
             end
             table.insert(images, { urls = { url } })

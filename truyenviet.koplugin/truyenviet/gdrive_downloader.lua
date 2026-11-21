@@ -1,168 +1,200 @@
 local Http = require("truyenviet/http_client")
 local Debug = require("truyenviet/debugger")
+local EbookDownloader = require("truyenviet/ebook_downloader")
+local socket_url = require("socket.url")
 
 local GDriveDownloader = {}
 
--- Follow redirect chain to get final download URL
--- Dilib uses /download/<hash> which redirects to Google Drive
-function GDriveDownloader:resolveUrl(url)
-    Debug.write("[GDrive] Resolving URL: " .. url)
+local BROWSER_UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
 
-    -- First request with no redirect to capture Location header
-    local content, err, headers, code, error_body = Http:request(
-        "GET", url, nil, {
-            ["User-Agent"] = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
-            ["Accept"] = "text/html,application/xhtml+xml,*/*",
-        },
-        { redirect = false }
-    )
-
-    -- Follow redirects manually
-    local max_redirects = 10
-    local current_url = url
-    for i = 1, max_redirects do
-        if not headers then break end
-        local numeric_code = tonumber(code) or 0
-        if numeric_code >= 300 and numeric_code < 400 then
-            local location = headers["location"]
-            if location then
-                if not location:match("^https?://") then
-                    local parsed = require("socket.url").parse(current_url)
-                    location = parsed.scheme .. "://" .. parsed.host .. location
-                end
-                Debug.write("[GDrive] Redirect " .. i .. ": " .. location)
-                current_url = location
-
-                -- If it's a Google Drive URL, handle specially
-                if location:match("drive%.google%.com") or location:match("docs%.google%.com") then
-                    return self:resolveGDriveUrl(location)
-                end
-
-                content, err, headers, code = Http:request(
-                    "GET", location, nil, {
-                        ["User-Agent"] = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
-                    },
-                    { redirect = false }
-                )
-            else
-                break
-            end
-        else
-            -- No more redirects - this is the final URL
-            break
-        end
-    end
-
-    -- If we got content directly, return it
-    if content and #content > 1000 then
-        return current_url, content
-    end
-
-    return current_url, nil
-end
-
--- Handle Google Drive specific download pages
-function GDriveDownloader:resolveGDriveUrl(gdrive_url)
-    Debug.write("[GDrive] Resolving Google Drive URL: " .. gdrive_url)
-
-    -- Extract file ID from various GDrive URL formats
-    local file_id = gdrive_url:match("/file/d/([^/]+)")
+local function extractFileId(gdrive_url)
+    if type(gdrive_url) ~= "string" then return nil end
+    return gdrive_url:match("/file/d/([^/?#]+)")
         or gdrive_url:match("[?&]id=([^&]+)")
         or gdrive_url:match("/open%?id=([^&]+)")
+end
 
-    if not file_id then
-        return gdrive_url, nil
-    end
+local function isGDriveHost(url)
+    return type(url) == "string"
+        and (url:match("^https?://drive%.google%.com/")
+            or url:match("^https?://docs%.google%.com/")
+            or url:match("^https?://drive%.usercontent%.google%.com/")) ~= nil
+end
 
-    -- Try direct download URL
-    local download_url = "https://drive.google.com/uc?export=download&id=" .. file_id
-    Debug.write("[GDrive] Trying direct download: " .. download_url)
+local function toDirectGDriveUrl(url)
+    local file_id = extractFileId(url)
+    if not file_id then return url end
+    return "https://drive.google.com/uc?export=download&id=" .. file_id
+end
 
-    local content, err, headers, code = Http:request("GET", download_url, nil, {
-        ["User-Agent"] = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
-    })
-
-    if not content then
-        return download_url, nil
-    end
-
-    -- Check for virus scan confirmation page
-    if content:find("confirm=", 1, true) or content:find("download_warning", 1, true) then
-        Debug.write("[GDrive] Virus scan confirmation page detected")
-        -- Extract confirmation token
-        local confirm_token = content:match('confirm=([^"&]+)')
-            or content:match("confirm=([^'&]+)")
-        if confirm_token then
-            local confirmed_url = string.format(
+local function extractConfirmedUrl(html, fallback_url)
+    if type(html) ~= "string" then return nil end
+    local file_id = extractFileId(fallback_url)
+        or html:match("https://drive%.google%.com/file/d/([A-Za-z0-9_%-]+)")
+        or html:match("https://docs%.google%.com/file/d/([A-Za-z0-9_%-]+)")
+        or html:match('"docid"%s*:%s*"([A-Za-z0-9_%-]+)"')
+        or html:match("[?&]id=([A-Za-z0-9_%-]+)")
+    if html:find("confirm=", 1, true) or html:find("download_warning", 1, true) or html:find("download%-form") then
+        local confirm_token = html:match('confirm=([^"&%s<>]+)') or html:match("confirm=([^'&%s<>]+)")
+        if confirm_token and file_id then
+            return string.format(
                 "https://drive.google.com/uc?export=download&confirm=%s&id=%s",
                 confirm_token, file_id
             )
-            Debug.write("[GDrive] Using confirmed URL: " .. confirmed_url)
-            return confirmed_url, nil
         end
-
-        -- Try extracting from form action
-        local form_action = content:match('action="([^"]*)"')
-        if form_action then
+        local form_tag, form_body = html:match("(<form[^>]*>)([%s%S]-)</form>")
+        local form_action = (form_tag and form_tag:match('action="([^"]*)"')) or html:match('action="([^"]*)"')
+        if form_action and form_action ~= "" then
+            form_action = form_action:gsub("&amp;", "&")
             if not form_action:match("^https?://") then
-                form_action = "https://drive.google.com" .. form_action
+                form_action = socket_url.absolute("https://drive.google.com/", form_action)
             end
-            return form_action, nil
+            if form_action:match("^https?://") then
+                if form_body and not form_action:find("?", 1, true) then
+                    local params = {}
+                    for input_tag in form_body:gmatch("<input[^>]*>") do
+                        local name = input_tag:match('name="([^"]+)"') or input_tag:match("name='([^']+)'")
+                        local val = input_tag:match('value="([^"]*)"') or input_tag:match("value='([^']*)'")
+                        if name and val and name ~= "" then
+                            table.insert(params, name .. "=" .. val)
+                        end
+                    end
+                    if #params > 0 then
+                        form_action = form_action .. "?" .. table.concat(params, "&")
+                    end
+                end
+                return form_action
+            end
         end
     end
-
-    -- If content looks like a file (not HTML), return as-is
-    if not content:find("<!DOCTYPE", 1, true) and not content:find("<html", 1, true) then
-        return download_url, content
+    local direct_uc = html:match('(https://drive%.usercontent%.google%.com/download%?[^"\'<>%s]+)')
+        or html:match('(https://drive%.google%.com/uc%?[^"\'<>%s]+)')
+    if direct_uc then
+        return (direct_uc:gsub("&amp;", "&"))
     end
-
-    return download_url, nil
+    -- When a redirect (e.g. Dilib /readbook/...) lands on a Google Drive /file/d/<id>/view HTML page,
+    -- convert the discovered file ID into a direct /uc?export=download URL.
+    if file_id and not tostring(fallback_url or ""):find("uc%?export=download", 1, false) then
+        return "https://drive.google.com/uc?export=download&id=" .. file_id
+    end
+    return nil
 end
 
--- Download file from resolved URL to save_path
-function GDriveDownloader:download(url, save_path)
-    Debug.write("[GDrive] Downloading: " .. url .. " -> " .. save_path)
+local function looksLikeHtml(bytes, headers)
+    local content_type = headers and (headers["content-type"] or headers["Content-Type"])
+    if tostring(content_type or ""):lower():find("text/html", 1, true) then
+        return true
+    end
+    return type(bytes) == "string" and bytes:match("^%s*<[!hH]") ~= nil
+end
 
-    local final_url, cached_content = self:resolveUrl(url)
-
-    local content
-    if cached_content and #cached_content > 1000 then
-        content = cached_content
-    else
-        local err
-        content, err = Http:get(final_url, {
-            ["User-Agent"] = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
-        })
-        if not content then
-            return nil, "Không thể tải file: " .. tostring(err)
+-- Resolve redirect chain without buffering file payloads in RAM.
+function GDriveDownloader:resolveUrl(url)
+    if type(url) ~= "string" or not url:match("^https?://") then
+        return nil, nil
+    end
+    local current_url = url
+    if isGDriveHost(current_url) then
+        return toDirectGDriveUrl(current_url), nil
+    end
+    for _ = 1, 10 do
+        local _, _, headers, code = Http:request("HEAD", current_url, nil, {
+            ["User-Agent"] = BROWSER_UA,
+        }, { redirect = false })
+        local numeric_code = tonumber(code) or 0
+        if numeric_code >= 300 and numeric_code < 400 and headers and headers["location"] then
+            local location = headers["location"]
+            if not location:match("^https?://") then
+                location = socket_url.absolute(current_url, location)
+            end
+            if not location or not location:match("^https?://") then
+                return nil, nil
+            end
+            current_url = location
+            if isGDriveHost(current_url) then
+                return toDirectGDriveUrl(current_url), nil
+            end
+        else
+            break
         end
     end
+    return current_url, nil
+end
 
-    -- Verify it's not an error page
-    if #content < 500 and content:find("<html", 1, true) then
-        return nil, "Nhận được trang lỗi thay vì file"
+-- Stream file from resolved URL to save_path via `.part`, validating payload before rename.
+function GDriveDownloader:download(url, save_path)
+    Debug.write("[GDrive] Downloading: " .. tostring(url) .. " -> " .. tostring(save_path))
+    if type(Http.downloadToFile) ~= "function" then
+        return nil, "Phiên bản HTTP hiện tại không hỗ trợ tải tệp dạng streaming"
+    end
+
+    local target_url = isGDriveHost(url) and toDirectGDriveUrl(url) or url
+    if type(target_url) ~= "string" or not target_url:match("^https?://") then
+        return nil, "Link tải không hợp lệ"
+    end
+    if not isGDriveHost(target_url) and type(Http.request) == "function" then
+        local resolved = self:resolveUrl(target_url)
+        if type(resolved) == "string" and resolved:match("^https?://") then
+            target_url = resolved
+        end
     end
 
     local temp_path = save_path .. ".part"
-    local file, open_err = io.open(temp_path, "wb")
-    if not file then
-        return nil, "Không thể tạo file: " .. tostring(open_err)
-    end
-    local written, write_err = file:write(content)
-    file:close()
-    if not written then
+    local req_headers = { ["User-Agent"] = BROWSER_UA }
+
+    for attempt = 1, 3 do
         os.remove(temp_path)
-        return nil, "Không thể ghi file: " .. tostring(write_err)
+        local downloaded, err, headers = Http:downloadToFile(target_url, temp_path, req_headers)
+        if not downloaded then
+            os.remove(temp_path)
+            return nil, "Không thể tải file: " .. tostring(err)
+        end
+
+        local preview, preview_err = EbookDownloader.readPreview(temp_path, 262144)
+        if not preview or preview == "" then
+            os.remove(temp_path)
+            return nil, "Không thể kiểm tra tệp đã tải: " .. tostring(preview_err or "tệp rỗng")
+        end
+
+        if looksLikeHtml(preview, headers) then
+            local confirmed = attempt < 3 and extractConfirmedUrl(preview, target_url) or nil
+            if confirmed and confirmed ~= target_url then
+                Debug.write("[GDrive] Retrying confirmed Google Drive URL: " .. confirmed)
+                target_url = confirmed
+            else
+                os.remove(temp_path)
+                return nil, "Máy chủ trả về HTML thay vì tệp hợp lệ"
+            end
+        else
+            local lower_path = tostring(save_path):lower()
+            local expected = lower_path:match("%.pdf$") and "pdf"
+                or lower_path:match("%.epub$") and "epub"
+                or lower_path:match("%.mobi$") and "mobi"
+                or lower_path:match("%.azw3$") and "azw3"
+            if expected then
+                local format, validation_err = EbookDownloader.validate(preview, headers, save_path)
+                if not format then
+                    os.remove(temp_path)
+                    return nil, validation_err
+                end
+                if format ~= expected then
+                    os.remove(temp_path)
+                    return nil, "Định dạng tệp tải về không khớp"
+                end
+            end
+
+            local ok, rename_err = os.rename(temp_path, save_path)
+            if not ok then
+                os.remove(temp_path)
+                return nil, "Không thể lưu file: " .. tostring(rename_err)
+            end
+            Debug.write("[GDrive] Download complete: " .. save_path)
+            return save_path
+        end
     end
 
-    local ok, rename_err = os.rename(temp_path, save_path)
-    if not ok then
-        os.remove(temp_path)
-        return nil, "Không thể lưu file: " .. tostring(rename_err)
-    end
-
-    Debug.write("[GDrive] Download complete: " .. save_path .. " (" .. #content .. " bytes)")
-    return save_path
+    os.remove(temp_path)
+    return nil, "Không thể tải tệp sau khi xác nhận liên kết"
 end
 
 return GDriveDownloader

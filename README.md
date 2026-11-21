@@ -1,44 +1,38 @@
 # Truyện Việt cho KOReader
 
-Plugin KOReader thuần Lua để tìm và đọc (phiên bản 3.0.0):
+Plugin KOReader thuần Lua để tìm, đọc và lưu truyện trực tuyến.
 
-- Truyện chữ từ [truyenfull.live](https://truyenfull.live)
-- Truyện tranh từ [truyenqqko.com](https://truyenqqko.com)
-- Truyện tranh từ [dualeotruyenhn.com](https://dualeotruyenhn.com)
-- Truyện chữ từ [truyendich.ai](https://truyendich.ai)
-- Truyện tranh từ [cbunu.com](https://cbunu.com)
-- Truyện tranh từ [haccbl.xyz](https://haccbl.xyz)
-- Truyện chữ từ [giatocvuongtai.com](https://giatocvuongtai.com)
-- Truyện chữ từ [docln.sbs](https://docln.sbs)
-- Truyện tranh từ [tve-4u.org](https://tve-4u.org)
-- Truyện tranh từ [dilib.vn](https://dilib.vn)
-- Truyện chữ từ [mizzya.wordpress.com](https://mizzya.wordpress.com)
-- Truyện chữ từ [metruyenvn.org](https://metruyenvn.org)
-- Truyện chữ từ [aztruyen.top](https://aztruyen.top)
-- Truyện chữ từ [dualeotruyenfull.net](https://dualeotruyenfull.net)
-- Truyện chữ từ [truyenc.com](https://truyenc.com)
+## Nguồn
+
+- Truyện chữ: [TruyenFull](https://truyenfull.live), [TruyenDich](https://truyendich.us), DocLN,
+  Mizzya, Mê Truyện VN, AzTruyen, DuaLeoTruyenFull, TruyenC và [XTruyện](https://xtruyen.vn).
+- Truyện tranh: TruyenQQ, [Dưa Leo](https://dualeotruyenbg.com) và Hắc Ám Chi Các.
+- Ebook (tệp gốc EPUB/PDF): Dilib Thư Viện Số.
+
+> Trạng thái kiểm chứng từng nguồn:
+> [docs/SOURCE_AUDIT_2026-10-22.md](docs/SOURCE_AUDIT_2026-10-22.md).
 
 Plugin tải chương về thư mục dữ liệu KOReader rồi mở bằng trình đọc có sẵn:
 
-- Truyện chữ được lưu dưới dạng HTML.
-- Truyện tranh được đóng gói thành CBZ, phù hợp với trình đọc manga của KOReader.
+- Truyện chữ: từng chương HTML, hoặc gom cả truyện thành **một HTML** hoặc **một EPUB 3**.
+- Truyện tranh: đóng gói CBZ, phù hợp trình đọc manga của KOReader.
+- Ebook: giữ nguyên tệp gốc sau khi kiểm tra đúng chữ ký EPUB/PDF.
 
 ## Tính năng
 
 - Chạm vào từng nguồn để mở ngay danh sách truyện đã hoàn thành.
 - Tìm riêng trong nguồn bằng nút kính lúp, lọc theo thể loại và chuyển trang ngay trên danh sách.
 - Tìm đồng thời trên mọi nguồn đang bật hoặc tìm theo từng nguồn.
-- Hiển thị ảnh bìa bên trái, tên truyện và nguồn bên phải.
-- Cache ảnh bìa để mở lại kết quả và tủ truyện nhanh hơn. Hỗ trợ **Tải lại ảnh bìa** thủ công.
-- Bật/tắt nguồn trong plugin.
-- Giữ tên truyện để xem mô tả, tải lại ảnh bìa, hoặc thêm/xóa khỏi tủ truyện.
-- Xem danh sách chương và phân trang dễ dàng.
-- **Tải thành 1 bộ**: Gom tất cả các chương truyện chữ thành 1 file HTML duy nhất để đọc mượt mà.
-- Lưu truyện vào tủ truyện, lưu Lịch sử đọc.
-- **Xóa hết**: Xóa sạch toàn bộ tủ truyện hoặc lịch sử đọc, kèm tùy chọn tự động dọn dẹp file đã tải để giải phóng bộ nhớ.
+- Hiển thị ảnh bìa bên trái, tên truyện và nguồn bên phải; cache ảnh bìa, hỗ trợ **Tải lại ảnh bìa**.
+- Bật/tắt nguồn, đổi tên miền nguồn (giữ tên nguồn trong **Quản lý nguồn**).
+- Xem danh sách chương và phân trang.
+- **Tải thành HTML** hoặc **Tải thành EPUB** (gom tất cả chương truyện chữ):
+  có tiến trình, chạm vào khung tiến trình để dừng, báo lỗi theo chương, hỏi trước
+  khi ghi đè. EPUB có bìa (nếu tải được), trang tiêu đề và mục lục.
+- Tủ truyện, lịch sử đọc; **Xóa hết** kèm tùy chọn dọn file đã tải.
 - Nút `Quay lại Truyện Việt` trong menu khi đang đọc chương.
-- Gửi **Báo lỗi (Error Reporting)** lên Github trực tiếp từ Kobo nếu có sự cố.
-- Menu plugin và thư mục chương đã tải vẫn mở được khi offline.
+- Gửi **Báo lỗi** trực tiếp từ thiết bị nếu có sự cố.
+- Menu plugin và chương đã tải vẫn mở được khi offline.
 
 ## Ảnh chụp màn hình
 
@@ -58,215 +52,89 @@ Plugin tải chương về thư mục dữ liệu KOReader rồi mở bằng tr�
 
 ## Cài đặt
 
-1. Tải `truyenviet.koplugin.zip` trong thư mục `dist` hoặc trang phát hành.
-2. Giải nén để nhận thư mục `truyenviet.koplugin`.
-3. Chép nguyên thư mục đó vào thư mục `plugins` của KOReader.
-4. Khởi động lại KOReader.
-5. Mở menu chính và chọn `Truyện Việt`.
-
-Tùy cách cài KOReader, đường dẫn thường có dạng:
+1. Tạo gói với `./scripts/build.ps1` (Windows) hoặc `./scripts/build.sh` (Linux/macOS),
+   hoặc tải `truyenviet.koplugin.zip` từ trang phát hành.
+2. Giải nén để nhận thư mục `truyenviet.koplugin` và chép nguyên thư mục vào `plugins` của KOReader.
+3. Khởi động lại KOReader rồi mở **Truyện Việt** từ menu chính.
 
 ```text
 Android: /sdcard/koreader/plugins/truyenviet.koplugin
 Kindle:  /mnt/us/koreader/plugins/truyenviet.koplugin
 Kobo:    /mnt/onboard/.adds/koreader/plugins/truyenviet.koplugin
+Linux:   ~/.config/koreader/plugins/truyenviet.koplugin
 ```
 
 Thư mục phải kết thúc bằng `.koplugin`; không chép riêng các file Lua ra ngoài.
-
-Plugin chỉ dùng API đa nền tảng có sẵn của KOReader và định dạng HTML/CBZ, nên
-cùng một gói ZIP có thể dùng trên Android, Kindle và Kobo. Kindle phải được
-jailbreak và cài KOReader trước. Trên thiết bị cũ có ít RAM, nên tải từng trang
-mục lục thay vì tải quá nhiều chương manga liên tiếp.
+Plugin chỉ dùng API đa nền tảng của KOReader, nên cùng một gói dùng được trên
+Android, Kindle (đã jailbreak) và Kobo. Trên thiết bị ít RAM, nên tải từng trang
+mục lục thay vì quá nhiều chương manga liên tiếp.
 
 ## Sử dụng
 
-- Chạm vào nguồn (như `TruyenFull`, `TruyenQQ`, `Hắc Ám Chi Các`, v.v.) để xem các truyện đã hoàn thành.
-- Trong màn hình của một nguồn, dùng nút kính lúp để tìm kiếm; dùng `Thể loại`, `‹`, `›` ở thanh dưới để lọc và chuyển trang web.
-- Vuốt danh sách hoặc dùng phím chuyển trang để xem các truyện còn lại trong trang web hiện tại.
-- Chạm một truyện để mở danh sách chương.
-- Giữ tên truyện để xem mô tả hoặc thêm/xóa khỏi tủ truyện.
-- Chạm một chương để tải và đọc.
-- Chọn `Tải các chương ở trang này` trong mục lục để tải hàng loạt các chương chưa có.
-- Giữ tên chương để mở, tải lại hoặc xóa bản đã tải.
-- Trong trình đọc, mở menu và chọn `Quay lại Truyện Việt` để trở về danh sách chương.
+- Chạm vào nguồn để xem truyện đã hoàn thành; nút kính lúp để tìm; `Thể loại`, `‹`, `›` để lọc/chuyển trang.
+- Chạm một truyện để mở danh sách chương; giữ tên truyện để xem mô tả hoặc thêm/xóa khỏi tủ truyện.
+- Chạm một chương để tải và đọc; giữ tên chương để mở, tải lại hoặc xóa bản đã tải.
+- `Tải các chương ở trang này` để tải hàng loạt chương chưa có.
+- `Tải thành HTML` / `Tải thành EPUB` để gom cả truyện thành một tệp.
+- Trong trình đọc, mở menu và chọn `Quay lại Truyện Việt`.
 
-Chương manga có thể chứa hàng trăm ảnh và tốn nhiều thời gian, dung lượng lưu trữ. Plugin ghi từng ảnh trực tiếp vào CBZ để hạn chế sử dụng RAM.
+Chương manga có thể chứa hàng trăm ảnh; plugin ghi từng ảnh trực tiếp vào CBZ để hạn chế dùng RAM.
 
-## Phát triển
+## Phát triển và kiểm thử
 
-Cấu trúc chính:
+Quy ước kiến trúc, trách nhiệm từng module và tiêu chuẩn thay đổi:
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-```text
-truyenviet.koplugin/
-  main.lua
-  truyenviet/
-    browser.lua
-    chapter_downloader.lua
-    cover_cache.lua
-    document_builder.lua
-    http_client.lua
-    reader.lua
-    search_service.lua
-    source_registry.lua
-    widgets/
-      story_results.lua
-    sources/
-      cbunu.lua
-      dualeo.lua
-      haccbl.lua
-      truyendich.lua
-      truyenfull.lua
-      truyenqq.lua
-      metruyenvn.lua
-      aztruyen.lua
-      dualeotruyenfull.lua
-      truyenc.lua
-      teenfic.lua
-      mizzya.lua
-```
-
-Đóng gói trên Windows:
-
-```powershell
-./scripts/build.ps1
-```
-
-Đóng gói trên Linux/macOS:
+Chạy toàn bộ test bằng LuaJIT của KOReader (WSL/Linux):
 
 ```sh
-./scripts/build.sh
+bash spec/run_all.sh --integration
 ```
 
-Chạy kiểm thử parser độc lập:
+### Chạy KOReader trên Windows qua WSL
 
-```sh
-lua spec/parser_test.lua
-lua spec/chapter_downloader_test.lua
-lua spec/storage_test.lua
-lua spec/story_results_test.lua
-lua spec/reader_test.lua
-lua spec/document_builder_test.lua
-lua spec/image_utils_test.lua
-lua spec/compile_test.lua .
-```
-
-Các parser specs dùng Busted nằm tại `spec/parser_spec.lua`.
-
-## Kiểm thử
-
-### 1. Chạy KOReader trên Windows qua WSL
-
-KOReader không có bản Windows native chính thức. Trên Windows 11, có thể chạy
-bản Linux bằng WSL2/WSLg để kiểm tra giao diện, tải truyện, tạo HTML/CBZ và mở
-chương ngay trên PC.
-
-Mở Ubuntu:
-
-```powershell
-wsl -d Ubuntu
-```
-
-Trong Ubuntu, tải và cài KOReader:
+KOReader không có bản Windows native chính thức; dùng WSL2/WSLg:
 
 ```sh
 cd /tmp
 wget https://github.com/koreader/koreader/releases/download/v2026.03/koreader_2026.03-1_amd64.deb
 sudo apt install ./koreader_2026.03-1_amd64.deb
-```
-
-Liên kết plugin đang phát triển vào thư mục dữ liệu KOReader:
-
-```sh
 mkdir -p ~/.config/koreader/plugins
 ln -sfnT /mnt/d/Project/truyenfull/truyenviet.koplugin ~/.config/koreader/plugins/truyenviet.koplugin
-```
-
-Khởi chạy:
-
-```sh
 koreader
 ```
 
-Sau mỗi lần sửa Lua, thoát và mở lại KOReader. Log nằm tại:
+Sau mỗi lần sửa Lua, thoát và mở lại KOReader. Log: `~/.config/koreader/crash.log`.
 
-```text
-~/.config/koreader/crash.log
-```
-
-### 2. Kiểm tra parser trên máy tính
-
-Máy cần Lua 5.1 hoặc LuaJIT:
-
-```powershell
-lua .\spec\parser_test.lua
-```
-
-Kết quả đúng có dạng:
-
-```text
-Parser tests passed: 49 assertions
-Chapter downloader tests passed: 5 assertions
-Storage tests passed: 19 assertions
-Story results tests passed: 18 assertions
-Reader tests passed: 10 assertions
-Document builder tests passed: 6 assertions
-Image utils tests passed: 4 assertions
-Lua compile tests passed: 19 files
-```
-
-Sau đó tạo gói cài:
-
-```powershell
-.\scripts\build.ps1
-```
-
-Trong Ubuntu/WSL có thể dùng:
-
-```sh
-sudo apt install lua5.1
-cd /mnt/d/Project/truyenfull
-lua5.1 spec/parser_test.lua
-```
-
-### 3. Cài bản thử lên Android
-
-Giải nén `dist/truyenviet.koplugin.zip`, sau đó chép cả thư mục
-`truyenviet.koplugin` vào:
-
-```text
-/sdcard/koreader/plugins/
-```
-
-Có thể dùng ADB:
+### Cài bản thử lên Android
 
 ```powershell
 adb push .\truyenviet.koplugin /sdcard/koreader/plugins/truyenviet.koplugin
 ```
 
-Thoát hoàn toàn rồi mở lại KOReader. Trong menu chính phải xuất hiện mục
-`Truyện Việt`.
+### Checklist trên KOReader
 
-### 4. Checklist trên KOReader
-
-1. Chạm lần lượt TruyenFull, TruyenQQ và Dưa Leo; mỗi nguồn phải tự mở danh sách truyện đã hoàn thành có bìa.
-2. Trong từng nguồn, thử nút kính lúp, chọn một thể loại và chuyển sang trang web kế tiếp.
-3. Tìm `phàm nhân` trên tất cả nguồn; kết quả khớp sát phải đứng trước và mỗi hàng có bìa.
-4. Tìm riêng trên TruyenFull, mở danh sách chương và kiểm tra phân trang.
-5. Mở một chương chữ; KOReader phải mở tệp HTML và hiển thị tiếng Việt đúng.
-6. Tìm truyện trên TruyenQQ và Dưa Leo, mở một chương ngắn và chờ tạo CBZ.
-7. Lật qua nhiều trang manga để chắc chắn ảnh không bị thiếu hoặc sai thứ tự.
-8. Mở menu khi đang đọc và chọn `Quay lại Truyện Việt`.
-9. Giữ tên truyện, mở `Xem chi tiết truyện`, sau đó thêm vào tủ truyện; khởi động lại KOReader và kiểm tra mục
-   yêu thích vẫn còn.
-10. Vào `Quản lý nguồn`, tắt Dưa Leo rồi bật lại từ trang chính và từ màn hình quản lý.
-11. Trong mục lục, chọn `Tải các chương ở trang này`, xác nhận các chương đã có được bỏ qua.
-12. Tắt mạng; kiểm tra menu plugin và các chương đã tải vẫn mở được.
-13. Giữ tên chương, thử tải lại rồi xóa bản đã tải.
-
-Nếu plugin không xuất hiện hoặc KOReader thoát, xem `crash.log` trong thư mục dữ
-liệu KOReader và tìm các dòng chứa `truyenviet`.
+1. Chạm lần lượt TruyenFull, TruyenQQ và Dưa Leo; mỗi nguồn phải mở danh sách truyện có bìa.
+2. Trong từng nguồn, thử kính lúp, chọn thể loại và chuyển trang.
+3. Tìm `phàm nhân` trên tất cả nguồn; kết quả khớp sát đứng trước.
+4. Mở một chương chữ; HTML hiển thị tiếng Việt đúng.
+5. Mở một chương manga ngắn, chờ tạo CBZ, lật trang kiểm tra thứ tự ảnh.
+6. Trong mục lục truyện chữ, chọn `Tải thành EPUB`; chạm khung tiến trình → `Tiếp tục`;
+   chờ xong → `Mở`. Kiểm tra bìa, mục lục, tiếng Việt.
+7. Chạy lại `Tải thành EPUB` cho cùng truyện: phải hỏi ghi đè. Chạy lần nữa và chọn
+   `Dừng` giữa chừng: không được còn tệp `.epub.part`.
+8. `Tải thành HTML` cho một truyện ngắn và mở tệp kết quả.
+9. Mở `Quay lại Truyện Việt` khi đang đọc.
+10. `Quản lý nguồn`: DTV eBook hiển thị `Đã tắt · Cloudflare chặn`; bật DTV và mở → phải
+    báo lỗi thân thiện, không crash, không tạo file.
+11. Tắt/bật Dưa Leo từ trang chính và từ màn hình quản lý.
+12. Gây lỗi rồi dùng `Chép log` trong hộp báo lỗi: không crash.
+13. Tắt mạng; menu plugin và chương đã tải vẫn mở được.
 
 ## Lưu ý
 
-Đây là trình đọc phía khách, không chứa nội dung truyện. Website nguồn có thể thay đổi HTML, CDN hoặc chính sách chống hotlink, khi đó parser cần được cập nhật. Người dùng tự chịu trách nhiệm tuân thủ điều khoản của website nguồn và quyền tác giả tại nơi mình sinh sống.
+Đây là trình đọc phía khách, không chứa nội dung truyện. Website nguồn có thể thay
+đổi HTML, CDN hoặc chính sách chống bot. Plugin không vượt CAPTCHA, DRM hay cơ chế
+giới hạn truy cập; nguồn trả Cloudflare/403 được coi là blocked cho đến khi có truy
+cập hợp lệ. Người dùng tự chịu trách nhiệm tuân thủ điều khoản của website nguồn và
+quyền tác giả tại nơi mình sinh sống.

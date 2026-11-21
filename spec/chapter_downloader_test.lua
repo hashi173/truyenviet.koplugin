@@ -66,7 +66,14 @@ local chapters = {
 local pending = ChapterDownloader:listPending(source, story, chapters)
 assertEqual(3, #pending, "Pending chapter count")
 
-local result = ChapterDownloader:download(source, story, chapters)
+local worker = coroutine.create(function()
+    return ChapterDownloader:download(source, story, chapters)
+end)
+local ok, result = coroutine.resume(worker)
+while ok and coroutine.status(worker) ~= "dead" do
+    ok, result = coroutine.resume(worker)
+end
+if not ok then error(result) end
 assertEqual(1, result.downloaded, "Downloaded chapter count")
 assertEqual(1, result.skipped, "Skipped chapter count")
 assertEqual(2, #result.errors, "Failed chapter count")

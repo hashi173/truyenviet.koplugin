@@ -47,17 +47,14 @@ end
 
 local function parseListing(html, page, source_id, base_url)
     local stories = parseCards(html, source_id)
-    local max_page = page or 1
-    for n in html:gmatch('/page/(%d+)/') do
-        local p = tonumber(n)
-        if p and p > max_page then max_page = p end
-    end
+    local max_page = Util.maxPage(html, page or 1)
     local genres = {}
-    for href, prefix, name in html:gmatch('<a[^>]+href="(https?://metruyenvn%.org/([^/]+)/[^"]+)"[^>]*>([^<]+)</a>') do
+    for href, prefix, name in html:gmatch('<a[^>]+href="(https?://[^/]+/([^/]+)/[^"]+)"[^>]*>([^<]+)</a>') do
         if prefix == "the-loai" or prefix == "nhom" or prefix == "loai-truyen" or prefix == "tu-khoa" or prefix == "tags" or prefix == "tag" then
             table.insert(genres, { name = Util.trim(name), url = href })
         end
     end
+    genres = Util.uniqueBy(genres, "url")
     return {
         stories = stories,
         genres = genres,
@@ -67,12 +64,38 @@ local function parseListing(html, page, source_id, base_url)
     }
 end
 
+function Source:parseSearchJson(raw_json)
+    local decoded = Util.decodeJson(raw_json)
+    if type(decoded) ~= "table" or not decoded.success or type(decoded.data) ~= "table" then
+        return {}
+    end
+    local stories = {}
+    for _, item in ipairs(decoded.data) do
+        if type(item) == "table" then
+            local title = Util.trim(Util.stripTags(item.title):gsub("%s+", " "))
+            local url = Util.absoluteUrl(self.base_url, item.link)
+            if url and title ~= "" then
+                table.insert(stories, {
+                    source_id = self.id,
+                    title = title,
+                    url = url,
+                    cover_url = Util.absoluteUrl(self.base_url, item.img),
+                    kind = self.kind,
+                })
+            end
+        end
+    end
+    return Util.uniqueBy(stories, "url")
+end
+
 function Source:search(query)
-    local encoded = ko_util.urlEncode(query)
-    local url = self.base_url .. "/?s=" .. encoded
-    local html, err = Http:get(url, stdHeaders(self.base_url))
-    if not html then return nil, err end
-    return parseCards(html, self.id)
+    local url = self.base_url .. "/wp-admin/admin-ajax.php"
+    local body, err = Http:postForm(url, {
+        action = "searchtax",
+        keyword = query,
+    }, stdHeaders(self.base_url))
+    if not body then return nil, err end
+    return self:parseSearchJson(body)
 end
 
 function Source:getCompleted(page)
@@ -97,10 +120,7 @@ function Source:getGenre(genre, page)
     return result
 end
 
-function Source:getStoryDetails(story)
-    local html, err = Http:get(story.url, stdHeaders(self.base_url))
-    if not html then return nil, err end
-    
+function Source:parseStoryDetails(html, story)
     local title = html:match('<meta property="og:title" content="([^"]+)%s*-%s*Mê Truyện')
         or html:match('<h2[^>]*class="[^"]*info%-title[^"]*"[^>]*>([^<]+)</h2>')
         or html:match('<meta itemprop="name" content="([^"]+)">')
@@ -132,12 +152,18 @@ function Source:getStoryDetails(story)
     end
     
     return {
-        title = title and Util.decodeHtml(Util.trim(title)) or story.title,
+        title = title and Util.decodeHtml(Util.trim(title)) or (story and story.title),
         author = author and Util.trim(author) or nil,
         description = description,
         genres = genres,
         is_completed = is_completed,
     }
+end
+
+function Source:getStoryDetails(story)
+    local html, err = Http:get(story.url, stdHeaders(self.base_url))
+    if not html then return nil, err end
+    return self:parseStoryDetails(html, story)
 end
 
 function Source:getStoryPage(story, page)
@@ -149,7 +175,7 @@ function Source:getStoryPage(story, page)
     local seen = {}
     
     -- Chapter format: <a href="https://metruyenvn.org/chuong-123/">...</a>
-    for href, inner_html in html:gmatch('<a[^>]+href="(https?://metruyenvn%.org/chuong%-[^"]+)"[^>]*>([%s%S]-)</a>') do
+    for href, inner_html in html:gmatch('<a[^>]+href="(https?://[^/]+/chuong%-[^"]+)"[^>]*>([%s%S]-)</a>') do
         if not seen[href] then
             seen[href] = true
             local title = inner_html:match('<span class="hidden%-sm hidden%-xs">(.-)</span>')
@@ -183,7 +209,7 @@ function Source:getStoryPage(story, page)
         end
     end
     
-    story.details = self:getStoryDetails(story)
+    story.details = self:parseStoryDetails(html, story)
     
     return {
         story = story,

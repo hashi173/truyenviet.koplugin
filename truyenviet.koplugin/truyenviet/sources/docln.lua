@@ -8,6 +8,9 @@ local Source = {
     name = "DocLN (Hako)",
     kind = "text",
     base_url = "https://docln.sbs",
+    legacy_base_urls = {
+        "https://docln.net",
+    },
     max_concurrent = 2,
 }
 
@@ -208,10 +211,9 @@ function Source:parseSearch(html)
 end
 
 function Source:search(query)
-    -- DocLN search: use the danh-sach page with search param
     local encoded = ko_util.urlEncode(query):gsub("%%20", "+")
     local html, err = Http:get(
-        self.base_url .. "/tim-kiem?q=" .. encoded,
+        self.base_url .. "/tim-kiem?keywords=" .. encoded,
         requestHeaders()
     )
     if not html then
@@ -329,6 +331,9 @@ function Source:parseStoryDetails(html)
 end
 
 function Source:getStoryDetails(story)
+    if type(story) == "table" and type(story.details) == "table" and story.details.description then
+        return story.details
+    end
     local html, err = Http:get(story.url, requestHeaders())
     if not html then
         return nil, err
@@ -530,6 +535,16 @@ function Source:parseChapter(html, chapter)
     content = content:gsub('<p style="display: none">[^<]*</p>', "")
     -- Remove banner images
     content = content:gsub('<a href="/truyen/%d+"[^>]*>.-</a>', "")
+    if Util.stripTags(content) == "" and content:find("<img", 1, true) then
+        local img_count = 0
+        for _ in content:gmatch("<img[^>]*>") do
+            img_count = img_count + 1
+        end
+        content = string.format(
+            "<p><i>[Chương minh họa Light Novel (%d ảnh minh họa nhân vật trên DocLN). Trình đọc văn bản HTML của KOReader không tải ảnh từ xa trong chương chữ — vui lòng chuyển sang chương tiếp theo để đọc nội dung truyện.]</i></p>\n",
+            img_count
+        ) .. content
+    end
 
     -- Navigation: previous/next chapter
     local previous_url, next_url
@@ -538,13 +553,12 @@ function Source:parseChapter(html, chapter)
     -- fa-backward = previous, fa-forward = next
     local nav_section = html:match('<section[^>]-class="[^"]*rd%-basic_icon[^"]*"[^>]*>([%s%S]-)</section>')
     if nav_section then
-        for anchor_attrs in nav_section:gmatch("<a([^>]*)>") do
+        for anchor_attrs, anchor_inner in nav_section:gmatch("<a([^>]*)>([%s%S]-)</a>") do
             local href = Util.getAttribute(anchor_attrs, "href")
-            local inner = html:sub(html:find(anchor_attrs, 1, true) or 1)
             if href and href:find("/c%d+%-", 1, false) then
-                if inner:find("fa%-backward", 1, true) then
+                if anchor_inner:find("fa%-backward", 1, true) then
                     previous_url = Util.absoluteUrl(self.base_url, href)
-                elseif inner:find("fa%-forward", 1, true) then
+                elseif anchor_inner:find("fa%-forward", 1, true) then
                     next_url = Util.absoluteUrl(self.base_url, href)
                 end
             end

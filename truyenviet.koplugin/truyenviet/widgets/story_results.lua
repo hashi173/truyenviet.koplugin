@@ -92,6 +92,30 @@ function StoryItem:init()
         max_width = text_width,
     }
 
+    local meta_row = HorizontalGroup:new{
+        align = "center",
+        self.source_widget,
+    }
+    local tag_text = self:getStatusTagText()
+    if tag_text then
+        table.insert(meta_row, HorizontalSpan:new{ width = math.max(math.floor(padding * 0.75), 4) })
+        table.insert(meta_row, FrameContainer:new{
+            padding_top = 1,
+            padding_bottom = 1,
+            padding_left = math.max(math.floor(padding * 0.6), 4),
+            padding_right = math.max(math.floor(padding * 0.6), 4),
+            margin = 0,
+            bordersize = border,
+            radius = Screen.scaleBySize and Screen:scaleBySize(4) or 4,
+            background = Blitbuffer.COLOR_LIGHT_GRAY,
+            TextWidget:new{
+                text = tag_text,
+                face = Font:getFace("xx_smallinfofont"),
+                bold = true,
+            },
+        })
+    end
+
     local text_group = VerticalGroup:new{
         align = "left",
         TextWidget:new{
@@ -101,7 +125,7 @@ function StoryItem:init()
             max_width = text_width,
         },
         VerticalSpan:new{ width = padding },
-        self.source_widget,
+        meta_row,
     }
     self[1] = FrameContainer:new{
         width = self.width,
@@ -137,6 +161,21 @@ end
 function StoryItem:getSourceText()
     local favorite = Storage:isFavorite(self.story) and "  ★" or ""
     return tostring(self.story.source_name or self.story.source_id) .. favorite
+end
+
+function StoryItem:getStatusTagText()
+    local story = self.story
+    if type(story) ~= "table" or story.source_id ~= "truyenfull" then
+        return nil
+    end
+    if story.is_full then
+        return "Full"
+    end
+    local status = type(story.details) == "table" and story.details.status or nil
+    if type(status) == "string" and (status:lower():find("full", 1, true) or status:lower():find("hoàn", 1, true)) then
+        return "Full"
+    end
+    return nil
 end
 
 function StoryItem:refreshFavorite()

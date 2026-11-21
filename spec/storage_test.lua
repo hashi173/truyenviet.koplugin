@@ -119,6 +119,19 @@ local failed, err = Storage:setSourceEnabled("dualeo", true)
 assertEqual(nil, failed, "Reports write failure")
 assertEqual(true, type(err) == "string", "Returns write error")
 assertEqual(false, Storage:isSourceEnabled("dualeo"), "Rolls back failed write")
+fail_flush = false
+
+-- Sources that are off by default (e.g. Cloudflare-blocked DTV).
+assertEqual(false, Storage:isSourceEnabled("dtv", false), "Default-disabled source starts off")
+assertEqual(true, Storage:isSourceEnabled("docln", true), "Default-enabled source starts on")
+ok = Storage:setSourceEnabled("dtv", true, false)
+assertEqual(true, ok, "Enables default-disabled source")
+assertEqual(true, Storage:isSourceEnabled("dtv", false), "Explicit enable overrides default")
+assertEqual(false, settings.data.disabled_sources.dtv, "Stores explicit enable as false")
+ok = Storage:setSourceEnabled("dtv", false, false)
+assertEqual(nil, settings.data.disabled_sources.dtv, "Back to default removes entry")
+assertEqual(false, Storage:isSourceEnabled("dtv", false), "Default-disabled source is off again")
+fail_flush = true
 
 local story = {
     source_id = "truyenfull",

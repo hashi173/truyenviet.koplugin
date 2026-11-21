@@ -13,11 +13,22 @@ package.preload["ui/event"] = function()
     }
 end
 
+package.preload["logger"] = function()
+    return { info = function() end }
+end
+
+package.preload["ui/widget/infomessage"] = function()
+    return { new = function(_, definition) return definition end }
+end
+
+package.preload["truyenviet/debugger"] = function()
+    return { write = function() end }
+end
+
 local close_count = 0
 local show_files_count = 0
 local broadcast_count = 0
 local show_reader_path
-local switched_path
 
 local ReaderUI = {
     instance = nil,
@@ -42,7 +53,12 @@ package.preload["ui/uimanager"] = function()
         broadcastEvent = function()
             broadcast_count = broadcast_count + 1
         end,
+        show = function() end,
+        close = function() end,
         nextTick = function(_, callback)
+            callback()
+        end,
+        scheduleIn = function(_, _, callback)
             callback()
         end,
     }
@@ -72,12 +88,15 @@ local function assertEqual(expected, actual, message)
 end
 
 ReaderUI.instance = {
-    switchDocument = function(_, path)
-        switched_path = path
+    onClose = function()
+        close_count = close_count + 1
+        ReaderUI.instance = nil
     end,
 }
+Reader.active = true
 Reader:show("chapter-2.html", function() end, function() end)
-assertEqual("chapter-2.html", switched_path, "Switches an active reader")
+assertEqual(1, close_count, "Closes the active reader before reopening")
+assertEqual("chapter-2.html", show_reader_path, "Reopens the requested document")
 assertEqual(true, Reader.active, "Keeps plugin reader session active")
 
 local normal_return_count = 0
@@ -92,14 +111,14 @@ Reader.on_return_callback = function()
 end
 Reader:returnToPlugin()
 Reader:returnToPlugin()
-assertEqual(1, close_count, "Closes reader once")
+assertEqual(2, close_count, "Closes reader once when returning")
 assertEqual(1, show_files_count, "Restores file manager once")
 assertEqual(1, normal_return_count, "Runs return callback once")
 assertEqual(false, Reader.active, "Ends reader session")
 
 ReaderUI.instance = nil
 Reader:show("chapter-1.html", function() end, function() end)
-assertEqual(1, broadcast_count, "Prepares existing UI before opening reader")
+assertEqual(2, broadcast_count, "Prepares existing UI before opening reader")
 assertEqual("chapter-1.html", show_reader_path, "Opens a new reader")
 
 local normal_count = 0

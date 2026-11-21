@@ -248,13 +248,98 @@ end
 
 function Util.maxPage(html, minimum)
     local max_page = minimum or 1
-    for page in tostring(html or ""):gmatch("trang%-(%d+)") do
-        max_page = math.max(max_page, tonumber(page) or 1)
+    local raw = tostring(html or "")
+    local function consider(num_str)
+        local n = tonumber(num_str)
+        if n and n >= 1 and n <= 100000 and n > max_page then
+            max_page = n
+        end
     end
-    for page in tostring(html or ""):gmatch("page=(%d+)") do
-        max_page = math.max(max_page, tonumber(page) or 1)
+    for prefix, page in raw:gmatch("(.?)trang%-(%d+)") do
+        if prefix ~= "-" then
+            consider(page)
+        end
+    end
+    for page in raw:gmatch("page=(%d+)") do
+        consider(page)
+    end
+    for page in raw:gmatch("/page/(%d+)") do
+        consider(page)
     end
     return max_page
+end
+
+function Util.decodeBase64(data)
+    if type(data) ~= "string" or data == "" then
+        return ""
+    end
+    local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    data = data:gsub("[^" .. alphabet .. "=]", "")
+    return (data:gsub(".", function(x)
+        if x == "=" then return "" end
+        local r, f = "", (alphabet:find(x, 1, true) - 1)
+        for i = 6, 1, -1 do
+            r = r .. (f % 2^i - f % 2^(i - 1) > 0 and "1" or "0")
+        end
+        return r
+    end):gsub("%d%d%d?%d?%d?%d?%d?%d?", function(x)
+        if #x ~= 8 then return "" end
+        local c = 0
+        for i = 1, 8 do
+            c = c + (x:sub(i, i) == "1" and 2^(8 - i) or 0)
+        end
+        return string.char(c)
+    end))
+end
+
+function Util.decodeJson(value)
+    if type(value) ~= "string" or value == "" then
+        return nil
+    end
+    local ok_json, json = pcall(require, "json")
+    -- KOReader's json.decode can be a callable table (__call), not a raw function.
+    if ok_json and type(json) == "table" and json.decode ~= nil then
+        local ok, decoded = pcall(json.decode, value)
+        if ok then
+            return decoded
+        end
+    end
+    if ko_util.jsonDecode ~= nil then
+        local ok, decoded = pcall(ko_util.jsonDecode, value)
+        if ok then
+            return decoded
+        end
+    end
+    return nil
+end
+
+-- Parse WordPress InitPluginSuite Live Search (/wp-json/initlise/v1/search)
+function Util.parseInitliseSearchJson(raw_json, source, transform_cover)
+    local decoded = Util.decodeJson(raw_json)
+    if type(decoded) ~= "table" then
+        return {}
+    end
+    local stories = {}
+    for _, item in ipairs(decoded) do
+        if type(item) == "table" then
+            local title = Util.trim(Util.stripTags(item.title):gsub("%s+", " "))
+            local url = Util.absoluteUrl(source.base_url, item.url)
+            if url and title ~= "" then
+                local cover_url = Util.absoluteUrl(source.base_url, item.thumb)
+                if cover_url and type(transform_cover) == "function" then
+                    cover_url = transform_cover(cover_url)
+                end
+                table.insert(stories, {
+                    source_id = source.id,
+                    title = title,
+                    url = url,
+                    cover_url = cover_url,
+                    kind = source.kind,
+                })
+            end
+        end
+    end
+    return Util.uniqueBy(stories, "url")
 end
 
 return Util

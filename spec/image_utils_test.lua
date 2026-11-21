@@ -26,12 +26,12 @@ assertEqual(
     "Recognizes PNG signature"
 )
 assertEqual(
-    true,
+    false,
     ImageUtils:isSupported(
         { ["content-type"] = "image/jpeg; charset=binary" },
         "payload"
     ),
-    "Recognizes image content type"
+    "Rejects a claimed image without a recognized signature"
 )
 assertEqual(
     false,

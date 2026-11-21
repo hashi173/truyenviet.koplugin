@@ -8,6 +8,7 @@ local lfs = require("libs/libkoreader-lfs")
 local CoverCache = {
     extensions = { "gif", "jpg", "png", "webp" },
     max_prefetch = 10,
+    failed_urls = {},
 }
 
 function CoverCache:get(story)
@@ -57,12 +58,17 @@ function CoverCache:download(story, source)
     -- trước khi gửi request (chỉ encode dấu cách, giữ nguyên phần còn lại vì
     -- URL này thường đã encode sẵn các ký tự khác).
     local request_url = story.cover_url:gsub(" ", "%%20")
+    if self.failed_urls[request_url] then
+        return nil, self.failed_urls[request_url]
+    end
 
     local content, err, response_headers = Http:requestAsync("GET", request_url, nil, headers)
     if not content then
+        self.failed_urls[request_url] = err or "Không tải được ảnh bìa"
         return nil, err
     end
     if not ImageUtils:isSupported(response_headers, content) then
+        self.failed_urls[request_url] = "Máy chủ không trả về ảnh bìa hợp lệ"
         return nil, "Máy chủ không trả về ảnh bìa hợp lệ"
     end
 

@@ -50,9 +50,12 @@ function Storage:initialize()
     if type(disabled_sources) ~= "table" then
         disabled_sources = {}
     end
+    -- true  = user disabled the source
+    -- false = user explicitly enabled a source that is off by default
+    -- nil   = follow the adapter default
     for source_id, disabled in pairs(disabled_sources) do
-        if disabled == true then
-            self.disabled_sources[source_id] = true
+        if type(disabled) == "boolean" then
+            self.disabled_sources[source_id] = disabled
         end
     end
 end
@@ -106,24 +109,30 @@ function Storage:setFastMode(enabled)
     return persistSetting(self, "fast_mode", enabled == true)
 end
 
-function Storage:isSourceEnabled(source_id)
+function Storage:isSourceEnabled(source_id, default_enabled)
     self:initialize()
-    return self.disabled_sources[source_id] ~= true
+    local disabled = self.disabled_sources[source_id]
+    if disabled == nil then
+        return default_enabled ~= false
+    end
+    return disabled ~= true
 end
 
-function Storage:setSourceEnabled(source_id, enabled)
+function Storage:setSourceEnabled(source_id, enabled, default_enabled)
     self:initialize()
-    local was_disabled = self.disabled_sources[source_id] == true
-    if enabled then
+    local previous = self.disabled_sources[source_id]
+    if (enabled and true or false) == (default_enabled ~= false) then
+        -- Matches the adapter default: store nothing so future default
+        -- changes still apply to this user.
         self.disabled_sources[source_id] = nil
     else
-        self.disabled_sources[source_id] = true
+        self.disabled_sources[source_id] = not enabled
     end
 
     local saved = {}
     for id, disabled in pairs(self.disabled_sources) do
-        if disabled == true then
-            saved[id] = true
+        if type(disabled) == "boolean" then
+            saved[id] = disabled
         end
     end
 
@@ -132,7 +141,7 @@ function Storage:setSourceEnabled(source_id, enabled)
         self.settings:flush()
     end)
     if not ok then
-        self.disabled_sources[source_id] = was_disabled and true or nil
+        self.disabled_sources[source_id] = previous
         return nil, tostring(err)
     end
     return true
@@ -206,6 +215,7 @@ local function favoriteRecord(story)
         url = story.url,
         cover_url = story.cover_url,
         kind = story.kind,
+        is_full = story.is_full,
         details = story.details,
     }
 end

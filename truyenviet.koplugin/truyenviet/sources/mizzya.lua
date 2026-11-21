@@ -52,23 +52,59 @@ function Source.getHome()
                     title = title,
                     url = href:gsub("#.*$", ""),
                     kind = Source.kind,
-                    cover_url = "", -- Đã kiểm tra: trang list của Mizzya là text-only, không có ảnh bìa
+                    cover_url = nil, -- Đã kiểm tra: trang list của Mizzya là text-only, không có ảnh bìa
                 })
             end
         end
     end
 
-    return {
+    local result = {
         stories = items,
         genres = {},
         page = 1,
         total_pages = 1,
         title = "Mizzya - Đam Mỹ Hoàn",
     }
+    Source._cached_home = result
+    return result
 end
 
 Source.getLatest = Source.getHome
 Source.getCompleted = Source.getHome
+
+function Source:search(query)
+    local normalized_query = Util.normalizeSearch(query)
+    if normalized_query == "" then
+        return {}
+    end
+    local home, err = self._cached_home or self.getHome()
+    if not home or type(home.stories) ~= "table" then
+        return nil, err
+    end
+    local matches = {}
+    for _, story in ipairs(home.stories) do
+        local normalized_title = Util.normalizeSearch(story.title)
+        if normalized_title:find(normalized_query, 1, true) then
+            table.insert(matches, story)
+        end
+    end
+    return matches
+end
+
+function Source:getStoryDetails(story)
+    if story and story.details then
+        return story.details
+    end
+    local page_data, err = self:getStoryPage(story, 1)
+    if not page_data then
+        return nil, err
+    end
+    return page_data.story and page_data.story.details or {
+        title = story and story.title or "Mizzya",
+        author = "Mizzya",
+        description = story and story.title or "",
+    }
+end
 
 function Source:getStoryPage(story, page)
     local html, err = mizzyaGet(story.url)

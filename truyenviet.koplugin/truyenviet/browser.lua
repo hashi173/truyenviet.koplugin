@@ -21,7 +21,11 @@ local Storage = require("truyenviet/storage")
 local StoryResults = require("truyenviet/widgets/story_results")
 local Version = require("truyenviet/version")
 local Debug = require("truyenviet/debugger")
+local EpubBuilder = require("truyenviet/epub_builder")
+local HtmlBundleBuilder = require("truyenviet/html_bundle_builder")
+local BundleExporter = require("truyenviet/bundle_exporter")
 local Util = require("truyenviet/helpers")
+local lfs = require("libs/libkoreader-lfs")
 
 local ListView = Menu:extend{
     is_popout = false,
@@ -275,13 +279,13 @@ function Browser:showErrorReportDialog(error_msg, on_close)
                             local ok, msg = ErrorReporter:copyReportToClipboard(user_desc, error_msg, true)
                             if ok then
                                 ErrorReporter:clearLogAfterSubmit()
-                                require("ui/widget/infomessage"):new({
+                                UIManager:show(require("ui/widget/infomessage"):new({
                                     text = msg,
-                                }):show()
+                                }))
                             else
-                                require("ui/widget/infomessage"):new({
+                                UIManager:show(require("ui/widget/infomessage"):new({
                                     text = "Lỗi chép log: " .. tostring(msg),
-                                }):show()
+                                }))
                             end
                             if on_close then UIManager:nextTick(on_close) end
                         end)
@@ -649,21 +653,21 @@ function Browser:showRoot()
     table.insert(items, {
             text = "Giới thiệu",
             callback = function()
+                local lines = {
+                    "Đọc truyện và tải ebook trực tuyến trong KOReader.",
+                    "",
+                }
+                for _, src in ipairs(SourceRegistry:listAll()) do
+                    local kind_label = src.kind == "ebook" and "Ebook"
+                        or (src.kind == "comic" and "Truyện tranh" or "Truyện chữ")
+                    table.insert(lines, string.format("- %s (%s): %s", src.name, kind_label, tostring(src.base_url)))
+                end
+                table.insert(lines, "")
+                table.insert(lines, "Chương truyện và ebook được lưu vào thư mục truyenviet trong thư mục dữ liệu KOReader.")
+                table.insert(lines, "Nội dung và ảnh thuộc về các website nguồn và chủ sở hữu tương ứng.")
                 UIManager:show(TextViewer:new{
                     title = "Truyện Việt",
-                    text = table.concat({
-                        "Đọc truyện trực tuyến trong KOReader.",
-                        "",
-                        "Nguồn truyện chữ: https://truyenfull.today/",
-                        "Nguồn truyện chữ: https://truyendich.vn/",
-                        "Nguồn truyện tranh: https://truyenqqko.com/",
-                        "Nguồn truyện tranh: https://dualeotruyenpt.com/",
-                        "Nguồn truyện tranh: https://cbunu.com/",
-                        "Nguồn truyện tranh: https://haccbl.xyz/",
-                        "",
-                        "Chương truyện được lưu vào thư mục truyenviet trong thư mục dữ liệu KOReader.",
-                        "Nội dung và ảnh thuộc về các website nguồn và chủ sở hữu tương ứng.",
-                    }, "\n"),
+                    text = table.concat(lines, "\n"),
                 })
             end,
         })
@@ -678,8 +682,12 @@ function Browser:showSourceMenu(on_return_callback)
         table.insert(items, {
             text = current_source.name,
             mandatory_func = function()
+                local note = SourceRegistry:getAvailabilityNote(current_source)
                 if not SourceRegistry:isEnabled(current_source.id) then
-                    return "Đã tắt · chạm để bật"
+                    return note and (note .. " · Đã tắt") or "Đã tắt · chạm để bật"
+                end
+                if note then
+                    return note
                 end
                 if current_source.kind == "ebook" then
                     return "EBOOK"
@@ -693,10 +701,7 @@ function Browser:showSourceMenu(on_return_callback)
                         showError(err)
                         return
                     end
-                    closeAndRun(view, function()
-                        self:showSourceMenu(on_return_callback)
-                    end)
-                    return
+                    current_source = SourceRegistry:get(current_source.id) or current_source
                 end
                 closeAndRun(view, function()
                     if current_source.kind == "ebook" then
@@ -1027,24 +1032,29 @@ function Browser:showStories(title, stories, on_return_callback, options)
                 showError("Nguồn truyện không còn khả dụng.")
                 return
             end
-            closeAndRun(view, function()
-                self:loadStoryPage(story, source, 1, function()
-                    if options.favorites_only then
-                        local favorites = Storage:listFavorites()
-                        if #favorites == 0 then
-                            on_return_callback()
-                        else
-                            self:showStories(
-                                title,
-                                favorites,
-                                on_return_callback,
-                                options
-                            )
-                        end
+            local function returnToCurrentStories()
+                if options.favorites_only then
+                    local favorites = Storage:listFavorites()
+                    if #favorites == 0 then
+                        on_return_callback()
                     else
-                        self:showStories(title, stories, on_return_callback, options)
+                        self:showStories(
+                            title,
+                            favorites,
+                            on_return_callback,
+                            options
+                        )
                     end
-                end)
+                else
+                    self:showStories(title, stories, on_return_callback, options)
+                end
+            end
+            closeAndRun(view, function()
+                if source.kind == "ebook" then
+                    self:openEbookItem(source, story, returnToCurrentStories)
+                else
+                    self:loadStoryPage(story, source, 1, returnToCurrentStories)
+                end
             end)
         end,
         story_hold_callback = function(story)
@@ -1055,6 +1065,14 @@ function Browser:showStories(title, stories, on_return_callback, options)
             local source = SourceRegistry:get(story.source_id)
             if not source then
                 showError("Nguồn truyện không còn khả dụng.")
+                return
+            end
+            if source.kind == "ebook" then
+                closeAndRun(view, function()
+                    self:openEbookItem(source, story, function()
+                        self:showStories(title, stories, on_return_callback, options)
+                    end)
+                end)
                 return
             end
             self:showStoryActions(story, source, function(is_favorite)
@@ -1170,6 +1188,10 @@ function Browser:showSourceManager(on_return_callback)
             text = current_source.name,
             mandatory_func = function()
                 local text = SourceRegistry:isEnabled(current_source.id) and "Đang bật" or "Đã tắt"
+                local note = SourceRegistry:getAvailabilityNote(current_source)
+                if note then
+                    text = text .. " · " .. note
+                end
                 if Storage:getCustomBaseUrl(current_source.id) then
                     text = text .. " (Tên miền tùy chỉnh)"
                 end
@@ -1287,6 +1309,64 @@ function Browser:getLocalChapters(story, source)
     return chapters
 end
 
+function Browser:openEbookItem(source, item, on_return_callback)
+    if not source then
+        showError("Nguồn ebook không khả dụng.", on_return_callback)
+        return
+    end
+    if source.id == "dilib" then
+        self:showDilibBookDetail(source, item, on_return_callback)
+    else
+        self:browseEbookSource(source, on_return_callback)
+    end
+end
+
+function Browser:showPageJumpDialog(current_page, total_pages, on_select_page)
+    local dialog
+    dialog = InputDialog:new{
+        title = string.format("Nhảy tới trang (1 - %d)", total_pages),
+        input = tostring(current_page or 1),
+        input_hint = string.format("Nhập số trang từ 1 đến %d", total_pages),
+        input_type = "number",
+        buttons = {
+            {
+                {
+                    text = "Hủy",
+                    callback = function()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = "Đi tới",
+                    is_enter_default = true,
+                    callback = function()
+                        local target = tonumber(dialog:getInputText())
+                        UIManager:close(dialog)
+                        if target and target >= 1 and target <= total_pages then
+                            on_select_page(math.floor(target))
+                        else
+                            showError(string.format("Số trang không hợp lệ (cần từ 1 đến %d).", total_pages))
+                        end
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
+local function resolveAutoOpenChapter(source, page_data, auto_open_chapter)
+    if type(auto_open_chapter) == "table" then
+        return auto_open_chapter
+    end
+    local chapters = page_data and page_data.chapters or {}
+    if source and source.reversed_chapters then
+        return chapters[#chapters]
+    end
+    return chapters[1]
+end
+
 function Browser:loadStoryPage(story, source, page, on_return_callback, auto_open_chapter, from_reader)
     local function loadOnline()
         runOnline(function()
@@ -1302,7 +1382,7 @@ function Browser:loadStoryPage(story, source, page, on_return_callback, auto_ope
             end
             Storage:updateFavorite(page_data.story)
             if auto_open_chapter then
-                local chapter_to_open = type(auto_open_chapter) == "table" and auto_open_chapter or page_data.chapters[1]
+                local chapter_to_open = resolveAutoOpenChapter(source, page_data, auto_open_chapter)
                 if chapter_to_open then
                     self:openChapter(nil, page_data, source, chapter_to_open, on_return_callback, false, from_reader)
                 else
@@ -1333,7 +1413,7 @@ function Browser:loadStoryPage(story, source, page, on_return_callback, auto_ope
                 chapters = local_chapters,
             }
             if auto_open_chapter then
-                local chapter_to_open = type(auto_open_chapter) == "table" and auto_open_chapter or page_data.chapters[1]
+                local chapter_to_open = resolveAutoOpenChapter(source, page_data, auto_open_chapter)
                 if chapter_to_open then
                     self:openChapter(nil, page_data, source, chapter_to_open, on_return_callback, false, from_reader)
                 else
@@ -1392,6 +1472,15 @@ local FloatingProgress = Widget:extend{
         self.frame.dimen = self.dimen
         self.frame:paintTo(b, self.x, self.y)
     end,
+    -- The indicator is the top window while a task runs, so it receives taps.
+    -- Cancellable tasks set `on_tap`; others keep the previous behaviour.
+    onGesture = function(self, ges)
+        if self.on_tap and ges and ges.ges == "tap" and ges.pos and self.dimen
+                and ges.pos:intersectWith(self.dimen) then
+            self.on_tap()
+            return true
+        end
+    end,
     setText = function(self, text)
         if self.text == text then return end
         self.text = text
@@ -1425,17 +1514,45 @@ local FloatingProgress = Widget:extend{
     end
 }
 
-local function runInBackground(task_name, task_func, on_complete)
+-- Run `task_func(ctx)` as a coroutine driven by the UI loop.  The task yields
+-- progress strings.  With `opts.cancellable`, tapping the indicator asks for
+-- confirmation and sets ctx.isCancelled(); the task must check it and clean up.
+local function runInBackground(task_name, task_func, on_complete, opts)
+    opts = opts or {}
+    local ctx = { cancelled = false }
+    function ctx.isCancelled() return ctx.cancelled end
+
     local indicator = FloatingProgress:new{
         text = "Đang tải ngầm: " .. task_name
     }
+    local confirm_open = false
+    if opts.cancellable then
+        indicator.on_tap = function()
+            if confirm_open or ctx.cancelled then return end
+            confirm_open = true
+            UIManager:show(ConfirmBox:new{
+                title = "Truyện Việt",
+                text = "Dừng tác vụ đang chạy?\n" .. task_name,
+                ok_text = "Dừng",
+                cancel_text = "Tiếp tục",
+                ok_callback = function()
+                    confirm_open = false
+                    ctx.cancelled = true
+                    indicator:setText("Đang dừng...")
+                end,
+                cancel_callback = function()
+                    confirm_open = false
+                end,
+            })
+        end
+    end
     UIManager:show(indicator)
     
     local co = coroutine.create(task_func)
     local final_result = nil
     local function tick()
         if coroutine.status(co) ~= "dead" then
-            local ok, result = coroutine.resume(co)
+            local ok, result = coroutine.resume(co, ctx)
             if not ok then
                 UIManager:close(indicator)
                 UIManager:show(InfoMessage:new{
@@ -1446,15 +1563,19 @@ local function runInBackground(task_name, task_func, on_complete)
                 if coroutine.status(co) == "dead" then
                     final_result = result
                 elseif type(result) == "string" then
-                    indicator:setText(result)
-                    indicator:bringToFront()
+                    local hint = opts.cancellable and not ctx.cancelled and " (chạm để dừng)" or ""
+                    indicator:setText(result .. hint)
+                    -- Do not cover the cancel confirmation dialog.
+                    if not confirm_open then
+                        indicator:bringToFront()
+                    end
                 end
                 UIManager:scheduleIn(0.05, tick)
             end
         else
             UIManager:close(indicator)
             UIManager:show(Notification:new{
-                text = "Tải ngầm hoàn tất: " .. task_name,
+                text = (ctx.cancelled and "Đã dừng: " or "Tải ngầm hoàn tất: ") .. task_name,
             })
             if on_complete then on_complete(final_result) end
         end
@@ -1502,6 +1623,33 @@ function Browser:downloadChapters(
     end)
 end
 
+local function orderChaptersForReading(source, chapters)
+    if not (source and source.reversed_chapters) or type(chapters) ~= "table" then
+        return chapters or {}
+    end
+    local ordered = {}
+    for i = #chapters, 1, -1 do
+        table.insert(ordered, chapters[i])
+    end
+    return ordered
+end
+
+local function fetchAllChaptersInReadingOrder(source, story, total_pages)
+    local all_chapters = {}
+    for p = 1, total_pages do
+        local p_data = source:getStoryPage(story, p)
+        if p_data and p_data.chapters and #p_data.chapters > 0 then
+            for _, c in ipairs(p_data.chapters) do
+                table.insert(all_chapters, c)
+            end
+        else
+            break
+        end
+    end
+    all_chapters = Util.uniqueBy(all_chapters, "url")
+    return orderChaptersForReading(source, all_chapters)
+end
+
 function Browser:confirmDownloadChapters(view, page_data, source)
     local story = page_data.story
     local warning = "Tiến hành tải tất cả các chương chưa có của truyện này?"
@@ -1519,20 +1667,7 @@ function Browser:confirmDownloadChapters(view, page_data, source)
                         local all_chapters = {}
                         local fetch_ok = false
                         local _, err = withLoading("Đang lấy danh sách toàn bộ chương...", function()
-                            for p = 1, page_data.total_pages do
-                                local p_data = source:getStoryPage(story, p)
-                                if p_data and p_data.chapters then
-                                    for _, c in ipairs(p_data.chapters) do
-                                        table.insert(all_chapters, c)
-                                    end
-                                else
-                                    if not p_data or not p_data.chapters or #p_data.chapters == 0 then
-                                        break
-                                    end
-                                end
-                            end
-                            local Util = require("truyenviet/helpers")
-                            all_chapters = Util.uniqueBy(all_chapters, "url")
+                            all_chapters = fetchAllChaptersInReadingOrder(source, story, page_data.total_pages)
                             fetch_ok = true
                             return true
                         end)
@@ -1552,8 +1687,9 @@ function Browser:confirmDownloadChapters(view, page_data, source)
                         end
                     end)
                 else
-                    local pending = ChapterDownloader:listPending(source, story, page_data.chapters)
-                    local already_downloaded = #page_data.chapters - #pending
+                    local ordered = orderChaptersForReading(source, page_data.chapters)
+                    local pending = ChapterDownloader:listPending(source, story, ordered)
+                    local already_downloaded = #ordered - #pending
                     if #pending == 0 then
                         UIManager:show(InfoMessage:new{
                             title = "Truyện Việt",
@@ -1568,9 +1704,19 @@ function Browser:confirmDownloadChapters(view, page_data, source)
     })
 end
 
-function Browser:confirmDownloadBundle(view, page_data, source)
+function Browser:confirmDownloadBundle(view, page_data, source, format)
     local story = page_data.story
-    local warning = "Tiến hành tải toàn bộ chương và gom thành 1 file HTML duy nhất?\n\nQuá trình này có thể mất nhiều thời gian tuỳ thuộc vào số lượng chương."
+    format = format or "html"
+    local label = format == "epub" and "EPUB" or "HTML"
+    local warning = "Tiến hành tải toàn bộ chương và đóng gói thành 1 file " .. label .. "?\n\nQuá trình này có thể mất nhiều thời gian tuỳ thuộc vào số lượng chương."
+
+    local function download(chapters)
+        if format == "epub" then
+            self:downloadAsEpub(story, source, chapters)
+        else
+            self:downloadAsBundle(story, source, chapters)
+        end
+    end
     
     UIManager:show(ConfirmBox:new{
         title = "Truyện Việt",
@@ -1583,120 +1729,130 @@ function Browser:confirmDownloadBundle(view, page_data, source)
                         local all_chapters = {}
                         local fetch_ok = false
                         local _, err = withLoading("Đang lấy danh sách toàn bộ chương...", function()
-                            for p = 1, page_data.total_pages do
-                                local p_data = source:getStoryPage(story, p)
-                                if p_data and p_data.chapters then
-                                    for _, c in ipairs(p_data.chapters) do
-                                        table.insert(all_chapters, c)
-                                    end
-                                else
-                                    if not p_data or not p_data.chapters or #p_data.chapters == 0 then
-                                        break
-                                    end
-                                end
-                            end
-                            local Util = require("truyenviet/helpers")
-                            all_chapters = Util.uniqueBy(all_chapters, "url")
+                            all_chapters = fetchAllChaptersInReadingOrder(source, story, page_data.total_pages)
                             fetch_ok = true
                             return true
                         end)
                         if fetch_ok then
-                            self:downloadAsBundle(story, source, all_chapters)
+                            download(all_chapters)
                         else
                             showError(err or "Lỗi khi lấy danh sách chương")
                         end
                     end)
                 else
-                    self:downloadAsBundle(story, source, page_data.chapters)
+                    download(orderChaptersForReading(source, page_data.chapters))
                 end
             end)
         end,
     })
 end
 
+function Browser:downloadAsEpub(story, source, all_chapters)
+    self:exportBundle(story, source, all_chapters, "epub")
+end
+
 function Browser:downloadAsBundle(story, source, all_chapters)
-    runOnline(function()
-        local Storage = require("truyenviet/storage")
-        local Util = require("truyenviet/helpers")
-        local CoverCache = require("truyenviet/cover_cache")
-        local lfs = require("libs/libkoreader-lfs")
-        
-        local story_dir = Storage:getStoryDir(source, story)
-        local safe_title = story.title:gsub('[<>:"/\\|?*]', '_')
-        local out_path = story_dir .. "/" .. safe_title .. ".html"
-        
-        local html_parts = {}
-        table.insert(html_parts, "<!DOCTYPE html>\n<html lang=\"vi\">\n<head>\n<meta charset=\"UTF-8\">\n<title>" .. story.title .. "</title>\n")
-        table.insert(html_parts, "<style>\nbody { font-family: serif; max-width: 800px; margin: auto; padding: 1em; }\n.chapter { margin-bottom: 3em; padding-top: 1em; border-top: 1px solid #ccc; }\nh2 { font-size: 1.2em; font-weight: bold; }\n</style>\n</head>\n<body>\n")
-        
-        -- Thêm cover image vào đầu trang HTML nếu có
-        local cover_filename = nil
-        if story.cover_url or story.cover_path then
-            CoverCache:download(story, source)
-            if story.cover_path and lfs.attributes(story.cover_path, "mode") == "file" then
-                local ext = story.cover_path:match("%.([^%.]+)$") or "jpg"
-                cover_filename = "cover." .. ext
-                local dest_path = story_dir .. "/" .. cover_filename
-                
-                local inf = io.open(story.cover_path, "rb")
-                if inf then
-                    local data = inf:read("*a")
-                    inf:close()
-                    local outf = io.open(dest_path, "wb")
-                    if outf then
-                        outf:write(data)
-                        outf:close()
-                        table.insert(html_parts, '<div style="text-align: center; page-break-after: always;"><img src="' .. cover_filename .. '" style="max-width: 100%; height: auto;" /></div>\n')
+    self:exportBundle(story, source, all_chapters, "html")
+end
+
+-- Shared "whole story as one file" export.  File layout lives in
+-- HtmlBundleBuilder / EpubBuilder; the chapter loop in BundleExporter.
+function Browser:exportBundle(story, source, all_chapters, format)
+    local label = format == "epub" and "EPUB" or "HTML"
+    if type(all_chapters) ~= "table" or #all_chapters == 0 then
+        showError("Không có chương nào để tải.")
+        return
+    end
+    local story_dir = Storage:getStoryDir(source, story)
+    local out_path = story_dir .. "/" .. Util.safeName(story.title, "truyen") .. "." .. format
+
+    local function start()
+        runOnline(function()
+            runInBackground(string.format("Đóng %s %d chương", label, #all_chapters), function(ctx)
+                local cover_path = self:prepareBundleCover(story, source)
+                local writer, create_err
+                if format == "epub" then
+                    writer, create_err = EpubBuilder.new(out_path, story, source, { cover_path = cover_path })
+                else
+                    local cover_filename
+                    if cover_path then
+                        cover_filename = self:copyCoverNextTo(cover_path, story_dir)
                     end
+                    writer, create_err = HtmlBundleBuilder.new(out_path, story, { cover_filename = cover_filename })
                 end
-            end
-        end
-
-        table.insert(html_parts, "<h1>" .. story.title .. "</h1>\n")
-        if story.details and story.details.author then
-            table.insert(html_parts, "<p><strong>Tác giả:</strong> " .. story.details.author .. "</p>\n")
-        end
-        if story.details and story.details.description then
-            table.insert(html_parts, "<div><strong>Giới thiệu:</strong><br/>" .. story.details.description .. "</div><hr/>\n")
-        end
-
-        runInBackground("Gom " .. #all_chapters .. " chương...", function()
-            local total = #all_chapters
-            local successes = 0
-            for i, chapter in ipairs(all_chapters) do
-                local progress = string.format("Đang gom %d/%d chương...", i, total)
-                coroutine.yield(progress) -- Nhường lại UI loop NGAY TRƯỚC khi tải chương, để UI kịp render text
-                local ch_data = source:getChapter(chapter)
-                if ch_data then
-                    table.insert(html_parts, "<div class=\"chapter\">\n<h2>" .. (chapter.title or "Chương " .. i) .. "</h2>\n")
-                    table.insert(html_parts, ch_data.content or ch_data)
-                    table.insert(html_parts, "\n</div>\n")
-                    successes = successes + 1
+                if not writer then
+                    return { error = create_err }
                 end
-            end
-            
-            table.insert(html_parts, "</body>\n</html>")
-            
-            local f, err = io.open(out_path, "w")
-            if not f then
-                showError("Lỗi khi ghi tệp: " .. tostring(err))
-                return
-            end
-            f:write(table.concat(html_parts))
-            f:close()
-            
-            if G_reader_settings and G_reader_settings.addDocument then
-                G_reader_settings:addDocument(out_path)
-                G_reader_settings:flush()
-            end
-            
-            UIManager:show(InfoMessage:new{
-                title = "Truyện Việt",
-                text = string.format("Đã lưu thành công %d/%d chương vào:\n%s\n\nBạn có thể mở tệp này bằng KOReader (trong Quản lý tệp tin).", successes, total, out_path)
-            })
+                return BundleExporter.run({
+                    source = source,
+                    chapters = all_chapters,
+                    writer = writer,
+                    progress = function(text) coroutine.yield(text) end,
+                    is_cancelled = ctx and ctx.isCancelled,
+                })
+            end, function(result)
+                if type(result) ~= "table" then
+                    showError("Không nhận được kết quả khi tạo " .. label)
+                elseif result.cancelled then
+                    UIManager:show(Notification:new{ text = "Đã dừng tạo " .. label .. ", không lưu tệp." })
+                elseif result.error then
+                    showError(result.error)
+                else
+                    if G_reader_settings and G_reader_settings.addDocument then
+                        G_reader_settings:addDocument(result.path)
+                        G_reader_settings:flush()
+                    end
+                    UIManager:show(ConfirmBox:new{
+                        title = "Truyện Việt",
+                        text = BundleExporter.summary(result, label),
+                        ok_text = "Mở",
+                        cancel_text = "Đóng",
+                        ok_callback = function()
+                            self:openEbookFile(result.path)
+                        end,
+                    })
+                end
+            end, { cancellable = true })
         end)
-        
-    end)
+    end
+
+    if lfs.attributes(out_path, "mode") == "file" then
+        UIManager:show(ConfirmBox:new{
+            title = "Truyện Việt",
+            text = "Tệp đã tồn tại:\n" .. out_path .. "\n\nGhi đè bằng bản mới?",
+            ok_text = "Ghi đè",
+            cancel_text = "Hủy",
+            ok_callback = start,
+        })
+    else
+        start()
+    end
+end
+
+-- Returns a local cover image path when the story has a usable cover.
+function Browser:prepareBundleCover(story, source)
+    if not (story.cover_url or story.cover_path) then
+        return nil
+    end
+    pcall(CoverCache.download, CoverCache, story, source)
+    if story.cover_path and lfs.attributes(story.cover_path, "mode") == "file" then
+        return story.cover_path
+    end
+end
+
+-- HTML bundles reference the cover by relative path next to the HTML file.
+function Browser:copyCoverNextTo(cover_path, dir)
+    local ext = (cover_path:match("%.([%w]+)$") or "jpg"):lower()
+    local filename = "cover." .. ext
+    local inf = io.open(cover_path, "rb")
+    if not inf then return nil end
+    local data = inf:read("*a")
+    inf:close()
+    local outf = io.open(dir .. "/" .. filename, "wb")
+    if not outf then return nil end
+    outf:write(data)
+    outf:close()
+    return filename
 end
 
 function Browser:showChapterList(page_data, source, on_return_callback)
@@ -1727,9 +1883,15 @@ function Browser:showChapterList(page_data, source, on_return_callback)
         })
         if source.kind == "text" then
             table.insert(items, {
-                text = "Tải thành 1 bộ (gom tất cả chương)",
+                text = "Tải thành HTML (gom tất cả chương)",
                 callback = function()
-                    self:confirmDownloadBundle(view, page_data, source)
+                    self:confirmDownloadBundle(view, page_data, source, "html")
+                end,
+            })
+            table.insert(items, {
+                text = "Tải thành EPUB (gom tất cả chương)",
+                callback = function()
+                    self:confirmDownloadBundle(view, page_data, source, "epub")
                 end,
             })
         end
@@ -1737,9 +1899,14 @@ function Browser:showChapterList(page_data, source, on_return_callback)
 
     if page_data.total_pages > 1 then
         table.insert(items, {
-            text = string.format("Trang %d / %d", page_data.page, page_data.total_pages),
-            dim = true,
-            select_enabled = false,
+            text = string.format("Trang %d / %d (chạm để nhảy trang)", page_data.page, page_data.total_pages),
+            callback = function()
+                self:showPageJumpDialog(page_data.page, page_data.total_pages, function(target_page)
+                    closeAndRun(view, function()
+                        self:loadStoryPage(story, source, target_page, on_return_callback)
+                    end)
+                end)
+            end,
         })
     end
     if page_data.page > 1 then
@@ -1761,6 +1928,28 @@ function Browser:showChapterList(page_data, source, on_return_callback)
                 end)
             end,
         })
+    end
+    if source.reversed_chapters and page_data.total_pages > 1 then
+        if page_data.page < page_data.total_pages then
+            table.insert(items, {
+                text = "↓ Tới trang cuối (Chương đầu)",
+                callback = function()
+                    closeAndRun(view, function()
+                        self:loadStoryPage(story, source, page_data.total_pages, on_return_callback)
+                    end)
+                end,
+            })
+        end
+        if page_data.page > 1 then
+            table.insert(items, {
+                text = "↑ Tới trang đầu (Chương mới nhất)",
+                callback = function()
+                    closeAndRun(view, function()
+                        self:loadStoryPage(story, source, 1, on_return_callback)
+                    end)
+                end,
+            })
+        end
     end
 
     for _, chapter in ipairs(page_data.chapters) do
@@ -1954,10 +2143,9 @@ function Browser:showChapterActions(view, page_data, source, chapter, on_return_
                             page_data,
                             source,
                             chapter,
-                                    on_return_callback,
-                                    false,
-                                    from_reader
-                                )
+                            on_return_callback,
+                            false
+                        )
                     end)
                 end,
             },
@@ -2098,358 +2286,18 @@ function Browser:showPasswordDialog(source, username, on_success, on_cancel)
 end
 
 function Browser:browseEbookSource(source, on_return_callback)
-    if source.id == "tve4u" then
-        self:browseTve4u(source, on_return_callback)
-    elseif source.id == "dilib" then
+    if source.id == "dilib" then
         self:browseDilib(source, on_return_callback)
     else
         showError("Nguồn ebook không được hỗ trợ.", on_return_callback)
     end
 end
 
--- ============ TVE-4U ============
-
-function Browser:browseTve4u(source, on_return_callback)
-    -- Check if login is needed
-    if source.requires_auth and not source:isLoggedIn() then
-        if CredentialManager:hasCredential(source.id) then
-            -- Try auto-login
-            runOnline(function()
-                local result, err = withLoading("Đang đăng nhập TVE-4U...", function()
-                    local ok, login_err = source:ensureLoggedIn()
-                    if not ok then error(login_err or "Đăng nhập thất bại") end
-                    return true
-                end)
-                if result then
-                    self:showTve4uForumList(source, on_return_callback)
-                else
-                    showError(err, function()
-                        self:showLoginDialog(source, function()
-                            self:showTve4uForumList(source, on_return_callback)
-                        end, on_return_callback)
-                    end)
-                end
-            end)
-        else
-            self:showLoginDialog(source, function()
-                self:showTve4uForumList(source, on_return_callback)
-            end, on_return_callback)
-        end
-        return
-    end
-
-    self:showTve4uForumList(source, on_return_callback)
-end
-
-function Browser:showTve4uForumList(source, on_return_callback)
-    runOnline(function()
-        local forums, err = withLoading("Đang tải danh mục...", function()
-            return source:getForumList()
-        end)
-        if not forums then
-            showError(err, on_return_callback)
-            return
-        end
-
-        local view
-        local items = {
-            {
-                text = "Tìm kiếm trên TVE-4U",
-                callback = function()
-                    self:showSearchDialog(source, function()
-                        self:showTve4uForumList(source, on_return_callback)
-                    end, view)
-                end,
-            },
-            {
-                text = "Quản lý tài khoản",
-                mandatory = CredentialManager:hasCredential(source.id) and "Đã lưu" or "",
-                callback = function()
-                    closeAndRun(view, function()
-                        self:showTve4uAccountMenu(source, function()
-                            self:showTve4uForumList(source, on_return_callback)
-                        end)
-                    end)
-                end,
-            },
-        }
-
-        for _, forum in ipairs(forums) do
-            local current_forum = forum
-            table.insert(items, {
-                text = current_forum.name,
-                callback = function()
-                    closeAndRun(view, function()
-                        self:showTve4uThreadList(source, current_forum, 1, function()
-                            self:showTve4uForumList(source, on_return_callback)
-                        end)
-                    end)
-                end,
-            })
-        end
-
-        if #forums == 0 then
-            table.insert(items, {
-                text = "Không tìm thấy diễn đàn nào.",
-                dim = true,
-                select_enabled = false,
-            })
-        end
-
-        view = showView("TVE-4U · Diễn đàn", items, on_return_callback)
-    end)
-end
-
-function Browser:showTve4uAccountMenu(source, on_return_callback)
-    local view
-    local items = {}
-
-    if CredentialManager:hasCredential(source.id) then
-        local cred = CredentialManager:getCredential(source.id)
-        table.insert(items, {
-            text = "Tài khoản: " .. (cred and cred.username or "N/A"),
-            dim = true,
-            select_enabled = false,
-        })
-        table.insert(items, {
-            text = "Đăng nhập lại",
-            callback = function()
-                closeAndRun(view, function()
-                    source._logged_in = false
-                    source._cookies = nil
-                    self:showLoginDialog(source, on_return_callback, on_return_callback)
-                end)
-            end,
-        })
-        table.insert(items, {
-            text = "Xóa tài khoản đã lưu",
-            callback = function()
-                CredentialManager:removeCredential(source.id)
-                source._logged_in = false
-                source._cookies = nil
-                UIManager:show(InfoMessage:new{
-                    title = "Truyện Việt",
-                    text = "Đã xóa thông tin tài khoản.",
-                })
-                closeAndRun(view, on_return_callback)
-            end,
-        })
-    else
-        table.insert(items, {
-            text = "Đăng nhập",
-            callback = function()
-                closeAndRun(view, function()
-                    self:showLoginDialog(source, on_return_callback, on_return_callback)
-                end)
-            end,
-        })
-    end
-
-    view = showView("TVE-4U · Tài khoản", items, on_return_callback)
-end
-
-function Browser:showTve4uThreadList(source, forum, page, on_return_callback)
-    runOnline(function()
-        local result, err = withLoading(
-            string.format("Đang tải %s...\nTrang %d", forum.name, page),
-            function()
-                return source:getThreadList(forum, page)
-            end
-        )
-        if not result then
-            showError(err, on_return_callback)
-            return
-        end
-
-        local view
-        local items = {}
-
-        if result.total_pages > 1 then
-            table.insert(items, {
-                text = string.format("Trang %d / %d", result.page, result.total_pages),
-                dim = true,
-                select_enabled = false,
-            })
-        end
-        if page > 1 then
-            table.insert(items, {
-                text = "← Trang trước",
-                callback = function()
-                    closeAndRun(view, function()
-                        self:showTve4uThreadList(source, forum, page - 1, on_return_callback)
-                    end)
-                end,
-            })
-        end
-
-        for _, thread in ipairs(result.threads) do
-            local current_thread = thread
-            table.insert(items, {
-                text = current_thread.title,
-                callback = function()
-                    closeAndRun(view, function()
-                        self:showTve4uThreadDetail(source, current_thread, function()
-                            self:showTve4uThreadList(source, forum, page, on_return_callback)
-                        end)
-                    end)
-                end,
-            })
-        end
-
-        if page < result.total_pages then
-            table.insert(items, {
-                text = "Trang sau →",
-                callback = function()
-                    closeAndRun(view, function()
-                        self:showTve4uThreadList(source, forum, page + 1, on_return_callback)
-                    end)
-                end,
-            })
-        end
-
-        if #result.threads == 0 then
-            table.insert(items, {
-                text = "Không có bài viết nào.",
-                dim = true,
-                select_enabled = false,
-            })
-        end
-
-        view = showView(forum.name, items, on_return_callback)
-    end)
-end
-
-function Browser:showTve4uThreadDetail(source, thread, on_return_callback)
-    runOnline(function()
-        local detail, err = withLoading("Đang tải chi tiết...", function()
-            return source:getThreadDetail(thread)
-        end)
-        if not detail then
-            showError(err, on_return_callback)
-            return
-        end
-
-        local view
-        local items = {}
-
-        -- Read Thread Content
-        if detail.posts and #detail.posts > 0 then
-            table.insert(items, {
-                text = "Đọc nội dung chủ đề",
-                callback = function()
-                    local text = {}
-                    for i, post in ipairs(detail.posts) do
-                        table.insert(text, "@ " .. post.author .. " (" .. post.date .. ")")
-                        table.insert(text, string.rep("-", 40))
-                        local plain = post.content:gsub("<br/?>", "\n"):gsub("</p>", "\n\n")
-                        plain = Util.stripTags(plain)
-                        table.insert(text, Util.trim(plain))
-                        table.insert(text, "\n")
-                    end
-                    UIManager:show(TextViewer:new{
-                        title = thread.title,
-                        text = table.concat(text, "\n"),
-                    })
-                end,
-            })
-        end
-
-        -- Attachments & Links
-        local total_links = (detail.attachments and #detail.attachments or 0) + (detail.external_links and #detail.external_links or 0)
-        if total_links > 0 then
-            table.insert(items, {
-                text = string.format("[Link] Tệp đính kèm & Link tải (%d)", total_links),
-                callback = function()
-                    local link_items = {}
-                    
-                    if detail.attachments then
-                        for _, att in ipairs(detail.attachments) do
-                            local current_att = att
-                            local book_stub = { title = thread.title, url = thread.url }
-                            local downloaded, existing_path = Storage:isEbookDownloaded(source, book_stub, current_att.filename)
-                            table.insert(link_items, {
-                                text = "[File] " .. current_att.filename,
-                                mandatory = downloaded and "Đã tải" or (current_att.size ~= "" and current_att.size or "Tải về"),
-                                callback = function()
-                                    if downloaded then
-                                        self:openEbookFile(existing_path, function() end)
-                                    else
-                                        self:downloadTve4uAttachment(source, book_stub, current_att, function() end)
-                                    end
-                                end,
-                            })
-                        end
-                    end
-
-                    if detail.external_links then
-                        for _, lnk in ipairs(detail.external_links) do
-                            local domain = lnk.url:match("://([^/]+)") or "Link ngoài"
-                            table.insert(link_items, {
-                                text = "[Web] " .. domain .. " (" .. lnk.author .. ")",
-                                callback = function()
-                                    UIManager:show(ConfirmBox:new{
-                                        text = "Mở link sau trong thiết bị?\n" .. lnk.url,
-                                        ok_text = "Mở",
-                                        ok_callback = function()
-                                            UIManager:show(TextViewer:new{
-                                                title = "Link tải",
-                                                text = lnk.url,
-                                            })
-                                        end,
-                                    })
-                                end,
-                            })
-                        end
-                    end
-                    
-                    showView("Tệp đính kèm & Link", link_items, function()
-                        -- Return to thread detail
-                        self:showTve4uThreadDetail(source, thread, on_return_callback)
-                    end)
-                end,
-            })
-        else
-            table.insert(items, {
-                text = "Không tìm thấy link tải hay đính kèm nào.",
-                dim = true,
-                select_enabled = false,
-            })
-        end
-
-        view = showView(thread.title, items, on_return_callback)
-    end)
-end
-
-function Browser:downloadTve4uAttachment(source, book, attachment, on_complete)
-    runOnline(function()
-        local save_path = Storage:getEbookPath(source, book, attachment.filename)
-        local result, err = withLoading(
-            "Đang tải " .. attachment.filename .. "...",
-            function()
-                return source:downloadAttachment(attachment, save_path)
-            end
-        )
-        if result then
-            UIManager:show(ConfirmBox:new{
-                title = "Truyện Việt",
-                text = "Đã tải xong: " .. attachment.filename .. "\nMở file ngay?",
-                ok_text = "Mở",
-                ok_callback = function()
-                    self:openEbookFile(save_path, on_complete)
-                end,
-                cancel_text = "Đóng",
-                cancel_callback = on_complete,
-            })
-        else
-            showError("Lỗi tải file: " .. tostring(err))
-        end
-    end)
-end
-
 -- ============ DILIB ============
 
 function Browser:browseDilib(source, on_return_callback)
-    local categories = source:getCategories()
+    local categories = source.getLibraryCategories and source:getLibraryCategories() or source:getCategories()
+    local audio_categories = source.getAudioCategories and source:getAudioCategories() or {}
     local view
     local items = {
         {
@@ -2461,6 +2309,20 @@ function Browser:browseDilib(source, on_return_callback)
             end,
         },
     }
+
+    if #audio_categories > 0 then
+        table.insert(items, {
+            text = "🔊 Sách nói & Radio (chỉ nghe MP3)",
+            mandatory = tostring(#audio_categories) .. " mục",
+            callback = function()
+                closeAndRun(view, function()
+                    self:browseDilibAudio(source, function()
+                        self:browseDilib(source, on_return_callback)
+                    end)
+                end)
+            end,
+        })
+    end
 
     for _, cat in ipairs(categories) do
         local current_cat = cat
@@ -2477,6 +2339,26 @@ function Browser:browseDilib(source, on_return_callback)
     end
 
     view = showView("Dilib · Thư Viện Số", items, on_return_callback)
+end
+
+function Browser:browseDilibAudio(source, on_return_callback)
+    local audio_categories = source.getAudioCategories and source:getAudioCategories() or {}
+    local view
+    local items = {}
+    for _, cat in ipairs(audio_categories) do
+        local current_cat = cat
+        table.insert(items, {
+            text = current_cat.name,
+            callback = function()
+                closeAndRun(view, function()
+                    self:showDilibBookList(source, current_cat, 1, function()
+                        self:browseDilibAudio(source, on_return_callback)
+                    end)
+                end)
+            end,
+        })
+    end
+    view = showView("Dilib · Sách nói & Radio", items, on_return_callback)
 end
 
 function Browser:showDilibSearchDialog(source, on_return_callback, parent_view)
@@ -2543,9 +2425,13 @@ function Browser:searchDilib(source, query, on_return_callback, parent_view)
         local items = {}
         for _, book in ipairs(results) do
             local current_book = book
+            local meta = current_book.format or current_book.author or ""
+            if current_book.format and current_book.author and current_book.author ~= "" then
+                meta = current_book.format .. " · " .. current_book.author
+            end
             table.insert(items, {
                 text = current_book.title,
-                mandatory = current_book.author or "",
+                mandatory = meta,
                 callback = function()
                     closeAndRun(view, function()
                         self:showDilibBookDetail(source, current_book, function()
@@ -2566,12 +2452,21 @@ end
 
 function Browser:showDilibBookList(source, category, page, on_return_callback)
     runOnline(function()
-        local result, err = withLoading(
-            string.format("Đang tải %s...\nTrang %d", category.name, page),
-            function()
-                return source:getCategoryBooks(category, page)
+        self._dilib_cat_cache = self._dilib_cat_cache or {}
+        local cache_key = tostring(category and category.url or "") .. "#p" .. tostring(page or 1)
+        local result = self._dilib_cat_cache[cache_key]
+        local err
+        if not result then
+            result, err = withLoading(
+                string.format("Đang tải %s...\nTrang %d", category.name, page),
+                function()
+                    return source:getCategoryBooks(category, page)
+                end
+            )
+            if result then
+                self._dilib_cat_cache[cache_key] = result
             end
-        )
+        end
         if not result then
             showError(err, on_return_callback)
             return
@@ -2582,9 +2477,14 @@ function Browser:showDilibBookList(source, category, page, on_return_callback)
 
         if result.total_pages > 1 then
             table.insert(items, {
-                text = string.format("Trang %d / %d", result.page, result.total_pages),
-                dim = true,
-                select_enabled = false,
+                text = string.format("Trang %d / %d (chạm để nhảy trang)", result.page, result.total_pages),
+                callback = function()
+                    self:showPageJumpDialog(result.page, result.total_pages, function(target_page)
+                        closeAndRun(view, function()
+                            self:showDilibBookList(source, category, target_page, on_return_callback)
+                        end)
+                    end)
+                end,
             })
         end
         if page > 1 then
@@ -2597,22 +2497,63 @@ function Browser:showDilibBookList(source, category, page, on_return_callback)
                 end,
             })
         end
-
-        for _, book in ipairs(result.books) do
-            local current_book = book
+        if page < result.total_pages then
             table.insert(items, {
-                text = current_book.title,
+                text = "Trang sau →",
                 callback = function()
                     closeAndRun(view, function()
-                        self:showDilibBookDetail(source, current_book, function()
-                            self:showDilibBookList(source, category, page, on_return_callback)
-                        end)
+                        self:showDilibBookList(source, category, page + 1, on_return_callback)
                     end)
                 end,
             })
         end
 
-        if page < result.total_pages then
+        for _, book in ipairs(result.books) do
+            local current_book = book
+            table.insert(items, {
+                text = current_book.title,
+                mandatory_func = function()
+                    if current_book._is_dmca then
+                        return "Đã gỡ BQ"
+                    end
+                    return current_book.badge or current_book.author or ""
+                end,
+                callback = function()
+                    local detail = current_book._cached_detail
+                    local load_err
+                    if not detail then
+                        detail, load_err = withLoading("Đang tải chi tiết sách...", function()
+                            return source:getBookDetail(current_book)
+                        end)
+                        if detail then
+                            current_book._cached_detail = detail
+                        end
+                    end
+                    if not detail then
+                        showError(load_err)
+                        return
+                    end
+                    if detail.is_dmca and not (detail.related_books and #detail.related_books > 0) then
+                        current_book._is_dmca = true
+                        if view and type(view.updateItems) == "function" then
+                            view:updateItems()
+                        end
+                        UIManager:show(InfoMessage:new{
+                            title = "Truyện Việt",
+                            text = "⚠️ \"" .. tostring(detail.title or current_book.title) .. "\" đã bị gỡ link đọc/tải trên Dilib (Khiếu Nại Bản Quyền).",
+                        })
+                        return
+                    end
+                    closeAndRun(view, function()
+                        self:showDilibBookDetail(source, current_book, function()
+                            self:showDilibBookList(source, category, page, on_return_callback)
+                        end, detail)
+                    end)
+                end,
+            })
+        end
+
+        if page < result.total_pages and #result.books > 6 then
             table.insert(items, {
                 text = "Trang sau →",
                 callback = function()
@@ -2635,12 +2576,19 @@ function Browser:showDilibBookList(source, category, page, on_return_callback)
     end)
 end
 
-function Browser:showDilibBookDetail(source, book, on_return_callback)
+function Browser:showDilibBookDetail(source, book, on_return_callback, preloaded_detail)
     local Util = require("truyenviet/helpers")
     runOnline(function()
-        local detail, err = withLoading("Đang tải chi tiết sách...", function()
-            return source:getBookDetail(book)
-        end)
+        local detail = preloaded_detail or (book and book._cached_detail)
+        local err
+        if not detail then
+            detail, err = withLoading("Đang tải chi tiết sách...", function()
+                return source:getBookDetail(book)
+            end)
+            if detail and type(book) == "table" then
+                book._cached_detail = detail
+            end
+        end
         if not detail then
             showError(err, on_return_callback)
             return
@@ -2648,6 +2596,9 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
 
         local view
         local items = {}
+        local refresh_detail = function()
+            self:showDilibBookDetail(source, book, on_return_callback, detail)
+        end
 
         -- Book info
         local info_lines = { source.name }
@@ -2666,7 +2617,7 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
         if detail.size then
             table.insert(info_lines, "Kích thước: " .. detail.size)
         end
-        if #detail.genres > 0 then
+        if detail.genres and #detail.genres > 0 then
             table.insert(info_lines, "Thể loại: " .. table.concat(detail.genres, ", "))
         end
         if detail.description and detail.description ~= "" then
@@ -2676,6 +2627,7 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
 
         table.insert(items, {
             text = "Xem thông tin sách",
+            mandatory = detail.format or "",
             callback = function()
                 UIManager:show(TextViewer:new{
                     title = detail.title,
@@ -2684,30 +2636,99 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
             end,
         })
 
-        -- PDF Download
-        if detail.has_pdf then
-            local book_stub = { title = detail.title, url = book.url }
-            local pdf_name = Util.safeName(detail.title, "book") .. ".pdf"
-            local downloaded, existing_path = Storage:isEbookDownloaded(source, book_stub, pdf_name)
+        -- Status banner if DMCA or Audio-only
+        if detail.is_dmca then
             table.insert(items, {
-                text = downloaded and "Mở sách PDF" or "Tải sách PDF",
-                mandatory = downloaded and "Đã tải" or (detail.size or ""),
+                text = "⚠️ Sách đã bị gỡ link đọc/tải trên Dilib (Khiếu Nại Bản Quyền)",
+                callback = function()
+                    UIManager:show(InfoMessage:new{
+                        title = "Truyện Việt",
+                        text = "Trang Dilib hiện hiển thị \"Khiếu Nại Bản Quyền\" cho cuốn sách này và đã gỡ toàn bộ liên kết đọc/tải file PDF & EPUB.",
+                    })
+                end,
+            })
+        elseif detail.content_kind == "audio_only" then
+            table.insert(items, {
+                text = "🔊 Mục này là Sách nói / Radio (chỉ có MP3, không có bản chữ)",
+                callback = function()
+                    UIManager:show(InfoMessage:new{
+                        title = "Truyện Việt",
+                        text = "Mục này trên Dilib chỉ cung cấp file âm thanh MP3 (Radio / Kịch truyền thanh / Sách nói), không có file PDF hay EPUB để đọc chữ.",
+                    })
+                end,
+            })
+        end
+
+        -- EPUB Download (Preferred format on KOReader!)
+        if detail.has_epub then
+            local book_stub = { title = detail.title, url = book.url }
+            local epub_name = Util.safeName(detail.title, "book") .. ".epub"
+            local downloaded, existing_path = Storage:isEbookDownloaded(source, book_stub, epub_name)
+            table.insert(items, {
+                text = downloaded and "Mở sách EPUB" or "Tải và đọc sách EPUB (Khuyên dùng)",
+                mandatory = downloaded and "Đã tải" or "EPUB",
                 callback = function()
                     if downloaded then
                         self:openEbookFile(existing_path, function()
-                            closeAndRun(view, function()
-                                self:showDilibBookDetail(source, book, on_return_callback)
-                            end)
+                            closeAndRun(view, refresh_detail)
                         end)
                     else
                         closeAndRun(view, function()
-                            self:downloadDilibPdf(source, book, detail, function()
-                                self:showDilibBookDetail(source, book, on_return_callback)
-                            end)
+                            self:downloadDilibEbook(source, book, detail, "epub", refresh_detail)
                         end)
                     end
                 end,
             })
+        end
+
+        -- PDF Download (from /download/ or smartly captured from /readbook/ Google Drive!)
+        if detail.has_pdf then
+            local book_stub = { title = detail.title, url = book.url }
+            local pdf_name = Util.safeName(detail.title, "book") .. ".pdf"
+            local downloaded, existing_path = Storage:isEbookDownloaded(source, book_stub, pdf_name)
+            local pdf_note = detail.size or "PDF"
+            if detail.pdf_from_readbook then
+                pdf_note = "Google Drive PDF"
+            end
+            table.insert(items, {
+                text = downloaded and "Mở sách PDF" or (detail.pdf_from_readbook and "Tải và đọc sách PDF (từ link Đọc Sách)" or "Tải và đọc sách PDF"),
+                mandatory = downloaded and "Đã tải" or pdf_note,
+                callback = function()
+                    if downloaded then
+                        self:openEbookFile(existing_path, function()
+                            closeAndRun(view, refresh_detail)
+                        end)
+                    else
+                        closeAndRun(view, function()
+                            self:downloadDilibEbook(source, book, detail, "pdf", refresh_detail)
+                        end)
+                    end
+                end,
+            })
+        end
+
+        -- MOBI / AZW3 if present
+        for _, extra_fmt in ipairs({ "mobi", "azw3" }) do
+            if detail["has_" .. extra_fmt] then
+                local book_stub = { title = detail.title, url = book.url }
+                local fname = Util.safeName(detail.title, "book") .. "." .. extra_fmt
+                local downloaded, existing_path = Storage:isEbookDownloaded(source, book_stub, fname)
+                table.insert(items, {
+                    text = downloaded and ("Mở sách " .. extra_fmt:upper()) or ("Tải sách " .. extra_fmt:upper()),
+                    mandatory = downloaded and "Đã tải" or extra_fmt:upper(),
+                    callback = function()
+                        if downloaded then
+                            self:openEbookFile(existing_path, function()
+                                closeAndRun(view, refresh_detail)
+                            end)
+                        else
+                            closeAndRun(view, function()
+                                self:downloadDilibEbook(source, book, detail, extra_fmt, refresh_detail)
+                            end)
+                        end
+                    end,
+                })
+            end
         end
 
         -- Audio Download
@@ -2717,8 +2738,8 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
             local downloaded, existing_path = Storage:isEbookDownloaded(source, book_stub, audio_name)
 
             table.insert(items, {
-                text = downloaded and "Sách nói đã tải" or "Tải sách nói MP3",
-                mandatory = downloaded and "Đã tải" or (detail.audio_size or ""),
+                text = downloaded and "Sách nói MP3 đã tải" or "Tải sách nói MP3",
+                mandatory = downloaded and "Đã tải" or (detail.audio_size or "MP3"),
                 callback = function()
                     if downloaded then
                         UIManager:show(InfoMessage:new{
@@ -2727,9 +2748,7 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
                         })
                     else
                         closeAndRun(view, function()
-                            self:downloadDilibAudio(source, book, detail, function()
-                                self:showDilibBookDetail(source, book, on_return_callback)
-                            end)
+                            self:downloadDilibAudio(source, book, detail, refresh_detail)
                         end)
                     end
                 end,
@@ -2758,6 +2777,31 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
             })
         end
 
+        -- Related / Same-series books (Sách cùng bộ / cùng tác giả)
+        if detail.related_books and #detail.related_books > 0 then
+            table.insert(items, {
+                text = string.format("📚 Sách cùng bộ / cùng tác giả (%d)", #detail.related_books),
+                callback = function()
+                    closeAndRun(view, function()
+                        local rel_view
+                        local rel_items = {}
+                        for _, rel_book in ipairs(detail.related_books) do
+                            local current_rel = rel_book
+                            table.insert(rel_items, {
+                                text = current_rel.title,
+                                callback = function()
+                                    closeAndRun(rel_view, function()
+                                        self:showDilibBookDetail(source, current_rel, refresh_detail)
+                                    end)
+                                end,
+                            })
+                        end
+                        rel_view = showView("Cùng bộ / tác giả: " .. detail.title, rel_items, refresh_detail)
+                    end)
+                end,
+            })
+        end
+
         -- Build info HTML page
         table.insert(items, {
             text = "Tạo trang thông tin (đọc offline)",
@@ -2768,9 +2812,7 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
                 local result, build_err = source:buildInfoPage(detail, save_path)
                 if result then
                     self:openEbookFile(save_path, function()
-                        closeAndRun(view, function()
-                            self:showDilibBookDetail(source, book, on_return_callback)
-                        end)
+                        closeAndRun(view, refresh_detail)
                     end)
                 else
                     showError("Lỗi tạo trang: " .. tostring(build_err))
@@ -2782,20 +2824,25 @@ function Browser:showDilibBookDetail(source, book, on_return_callback)
     end)
 end
 
-function Browser:downloadDilibPdf(source, book, detail, on_complete)
+function Browser:downloadDilibEbook(source, book, detail, format, on_complete)
+    format = tostring(format or "pdf"):lower()
+    local label = format:upper()
     runOnline(function()
         local book_stub = { title = detail.title, url = book.url }
-        local pdf_name = Util.safeName(detail.title, "book") .. ".pdf"
-        local save_path = Storage:getEbookPath(source, book_stub, pdf_name)
+        local file_name = Util.safeName(detail.title, "book") .. "." .. format
+        local save_path = Storage:getEbookPath(source, book_stub, file_name)
 
-        local result, run_err = withLoading("Đang tải PDF " .. detail.title .. "...", function()
+        local result, run_err = withLoading("Đang tải " .. label .. " " .. detail.title .. "...", function()
+            if type(source.downloadEbook) == "function" then
+                return source:downloadEbook(detail, format, save_path)
+            end
             return source:downloadPdf(detail, save_path)
         end)
 
         if result then
             UIManager:show(ConfirmBox:new{
                 title = "Truyện Việt",
-                text = "Đã tải xong: " .. pdf_name .. "\nMở sách ngay?",
+                text = "Đã tải xong: " .. file_name .. "\nMở sách ngay?",
                 ok_text = "Mở",
                 ok_callback = function()
                     self:openEbookFile(save_path, on_complete)
@@ -2805,9 +2852,13 @@ function Browser:downloadDilibPdf(source, book, detail, on_complete)
             })
         else
             os.remove(save_path .. ".part")
-            showError("Lỗi tải PDF: " .. tostring(run_err), on_complete)
+            showError("Lỗi tải " .. label .. ": " .. tostring(run_err), on_complete)
         end
     end)
+end
+
+function Browser:downloadDilibPdf(source, book, detail, on_complete)
+    return self:downloadDilibEbook(source, book, detail, "pdf", on_complete)
 end
 
 function Browser:downloadDilibAudio(source, book, detail, on_complete)
@@ -2842,18 +2893,25 @@ end
 -- ============ SHARED EBOOK UTILS ============
 
 function Browser:openEbookFile(file_path, on_return_callback)
+    local lfs = require("libs/libkoreader-lfs")
+    if not file_path or lfs.attributes(file_path, "mode") ~= "file" then
+        showError("Không tìm thấy tệp ebook tại:\n" .. tostring(file_path), on_return_callback)
+        return
+    end
     local ext = file_path:match("%.([^%.]+)$")
     if ext then ext = ext:lower() end
 
     -- Check if KOReader can open this format
-    local supported = { html = true, epub = true, pdf = true, mobi = true, txt = true, fb2 = true, cbz = true }
+    local supported = { html = true, epub = true, pdf = true, mobi = true, azw3 = true, txt = true, fb2 = true, cbz = true }
     if ext and supported[ext] then
-        local FileManager = require("apps/filemanager/filemanager")
         local ReaderUI = require("apps/reader/readerui")
         if ReaderUI.instance then
             ReaderUI.instance:onClose()
         end
-        ReaderUI:showReader(file_path)
+        local ok, err = pcall(ReaderUI.showReader, ReaderUI, file_path)
+        if not ok then
+            showError("Không thể mở ebook: " .. tostring(err), on_return_callback)
+        end
     elseif ext == "rar" or ext == "zip" or ext == "7z" then
         UIManager:show(InfoMessage:new{
             title = "Truyện Việt",

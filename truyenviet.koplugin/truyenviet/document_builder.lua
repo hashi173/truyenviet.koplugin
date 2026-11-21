@@ -177,6 +177,7 @@ function DocumentBuilder:buildComic(source, story, chapter, payload, is_temp)
         local archive_err = nil
         local failed_images = {}
         local downloaded_count = 0
+        local downloaded_page_count = 0
         local max_retries = 3
 
         local chapter_start = os.time()
@@ -244,6 +245,9 @@ function DocumentBuilder:buildComic(source, story, chapter, payload, is_temp)
                         archive_err = archive.err or ("Không thể ghi " .. entry_name)
                     else
                         downloaded_count = downloaded_count + 1
+                        if not image.is_cover then
+                            downloaded_page_count = downloaded_page_count + 1
+                        end
                     end
                 else
                     if image.is_cover then
@@ -267,6 +271,12 @@ function DocumentBuilder:buildComic(source, story, chapter, payload, is_temp)
 
         if has_error then
             error(archive_err)
+        end
+
+        -- A cover alone (or placeholder pages) is not a usable comic.  Do not
+        -- report a successful download when every actual page request failed.
+        if #payload.images > 0 and downloaded_page_count == 0 then
+            error("Không tải được ảnh trang nào của chương truyện")
         end
         
         if #failed_images > 0 then

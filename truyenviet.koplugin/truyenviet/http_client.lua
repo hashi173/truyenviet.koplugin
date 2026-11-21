@@ -187,16 +187,35 @@ local function safeLogPreview(content, response_headers, max_len)
     return content:sub(1, max_len)
 end
 
-local function isCloudflare(content)
-    if content and (content:find("window._cf_chl_opt", 1, true) or content:find('id="challenge%-error%-text"', 1, true) or content:find("<title>Just a moment...</title>", 1, true)) then
+local function isCloudflare(content, response_headers)
+    if type(response_headers) == "table" then
+        local mitigated = response_headers["cf-mitigated"] or response_headers["CF-Mitigated"]
+        if mitigated and tostring(mitigated):lower():find("challenge", 1, true) then
+            return true
+        end
+    end
+    if type(content) == "string" and (
+        content:find("window._cf_chl_opt", 1, true)
+        or content:find('id="challenge%-error%-text"', 1, true)
+        or content:find("<title>Just a moment...</title>", 1, true)
+    ) then
         return true
     end
     return false
 end
 
+local function formatHttpError(status, code, response_headers, error_body)
+    if isCloudflare(error_body, response_headers) then
+        return "Bị chặn bởi Cloudflare (Anti-Bot)"
+    end
+    local label = tostring(status or code or "?")
+    label = label:gsub("^HTTP/%d+%.%d+%s+", "")
+    return "Máy chủ trả về HTTP " .. label
+end
+
 local function curlFallback(method, url, request_headers)
     local function runCurl(extra_args)
-        local curl_cmd = "curl -skSL" .. (extra_args and (" " .. extra_args) or "")
+        local curl_cmd = "curl -skSL --connect-timeout 15 --max-time 30" .. (extra_args and (" " .. extra_args) or "")
         if method and method:upper() ~= "GET" then
             curl_cmd = curl_cmd .. string.format(' -X %s', method)
         end
@@ -206,7 +225,7 @@ local function curlFallback(method, url, request_headers)
         for k, v in pairs(request_headers or {}) do
             curl_cmd = curl_cmd .. string.format(' -H "%s: %s"', k, tostring(v):gsub('"', '\\"'))
         end
-        curl_cmd = curl_cmd .. string.format(" '%s'", url:gsub("'", "'\\''"))
+        curl_cmd = curl_cmd .. string.format(" '%s' 2>/dev/null", url:gsub("'", "'\\''"))
 
         local f = io.popen(curl_cmd)
         if not f then return nil end
@@ -364,11 +383,11 @@ function HttpClient:request(method, url, body, headers, options)
             end
         end
 
-        return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code)), response_headers, numeric_code, error_body
+        return nil, formatHttpError(status, code, response_headers, error_body), response_headers, numeric_code, error_body
     end
 
     local content = table.concat(sink)
-    if isCloudflare(content) then
+    if isCloudflare(content, response_headers) then
         Debug.write("[HTTP ERROR] Cloudflare challenge detected in 200 OK response")
         return nil, "Bị chặn bởi Cloudflare (Anti-Bot)", response_headers, 403, content
     end
@@ -385,6 +404,109 @@ end
 
 function HttpClient:get(url, headers, options)
     return self:request("GET", url, nil, headers, options)
+end
+
+-- Stream a response directly to disk.  This is deliberately separate from
+-- request(): callers downloading ebooks must not retain an entire EPUB/PDF in
+-- memory just to save it afterwards.
+function HttpClient:downloadToFile(url, path, headers, options)
+    if not validateUrl(url) then
+        return nil, "URL không hợp lệ: " .. tostring(url)
+    end
+    if type(path) ~= "string" or path == "" then
+        return nil, "Đường dẫn tệp không hợp lệ"
+    end
+
+    options = options or {}
+    local file, open_err = io.open(path, "wb")
+    if not file then
+        return nil, "Không thể tạo tệp tạm: " .. tostring(open_err)
+    end
+
+    local received = 0
+    local write_err
+    local closed = false
+    local function closeFile()
+        if not closed then
+            file:close()
+            closed = true
+        end
+    end
+    local function sink(chunk, sink_err)
+        if chunk then
+            received = received + #chunk
+            if options.max_bytes and received > options.max_bytes then
+                write_err = "Tệp tải về vượt quá dung lượng cho phép"
+                return nil, write_err
+            end
+            local ok, err = file:write(chunk)
+            if not ok then
+                write_err = tostring(err)
+                return nil, write_err
+            end
+            return 1
+        end
+        closeFile()
+        return sink_err and nil or 1, sink_err
+    end
+
+    local request_headers = mergeHeaders(headers)
+    socketutil:set_timeout(self.connect_timeout, options.timeout or self.total_timeout)
+    local ok, code, response_headers, status = pcall(function()
+        local req_func = http.request
+        if options.force_luasec and url:match("^https") then
+            local https = require("ssl.https")
+            req_func = https._original_request or https.request_sni or https.request
+        end
+        return socket.skip(1, req_func({
+            url = url,
+            method = "GET",
+            headers = request_headers,
+            sink = sink,
+            redirect = false,
+        }))
+    end)
+    socketutil:reset_timeout()
+    closeFile()
+
+    if not ok or write_err then
+        os.remove(path)
+        return nil, write_err or tostring(code)
+    end
+    local numeric_code = tonumber(code)
+    if numeric_code and numeric_code >= 300 and numeric_code < 400
+            and options.redirect ~= false and response_headers and response_headers["location"] then
+        os.remove(path)
+        local redirect_count = (options.redirect_count or 0) + 1
+        if redirect_count > 5 then
+            return nil, "Quá nhiều lần chuyển hướng"
+        end
+        local target = response_headers["location"]
+        if not target:match("^https?://") then
+            target = socket_url.absolute(url, target)
+        end
+        if not validateUrl(target) then
+            return nil, "Máy chủ chuyển hướng đến URL không an toàn"
+        end
+        local redirected_options = {}
+        for key, value in pairs(options) do redirected_options[key] = value end
+        redirected_options.redirect_count = redirect_count
+        return self:downloadToFile(target, path, headers, redirected_options)
+    end
+    if not numeric_code or numeric_code < 200 or numeric_code >= 300 then
+        os.remove(path)
+        return nil, formatHttpError(status, code, response_headers), response_headers, numeric_code
+    end
+    if received == 0 then
+        os.remove(path)
+        return nil, "Tệp tải về rỗng", response_headers, numeric_code
+    end
+    local content_length = tonumber(response_headers and response_headers["content-length"])
+    if content_length and received ~= content_length then
+        os.remove(path)
+        return nil, "Dữ liệu tải về không đầy đủ", response_headers, numeric_code
+    end
+    return path, nil, response_headers, numeric_code
 end
 
 function HttpClient:postJson(url, payload, headers)
@@ -533,11 +655,11 @@ function HttpClient:requestAsync(method, url, body, headers, opts)
             end
         end
 
-        return nil, string.format("Máy chủ trả về HTTP %s", tostring(status or code))
+        return nil, formatHttpError(status, code, response_headers, error_body)
     end
     
     local content = table.concat(sink)
-    if isCloudflare(content) then
+    if isCloudflare(content, response_headers) then
         Debug.write("[HTTP Async ERROR] Cloudflare challenge detected in 200 OK response")
         return nil, "Bị chặn bởi Cloudflare (Anti-Bot)"
     end

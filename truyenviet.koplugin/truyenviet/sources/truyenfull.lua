@@ -7,7 +7,25 @@ local Source = {
     name = "TruyenFull",
     kind = "text",
     base_url = "https://truyenfull.live",
+    legacy_base_urls = {
+        "https://truyenfull.today",
+        "https://truyenfull.vision",
+        "https://truyenfull.io",
+        "https://truyenfull.vn",
+    },
 }
+
+local function normalizeUrl(self, url)
+    if type(url) ~= "string" or url == "" then
+        return url
+    end
+    for _, legacy in ipairs(self.legacy_base_urls or {}) do
+        if url:sub(1, #legacy):lower() == legacy:lower() then
+            return self.base_url:gsub("/+$", "") .. url:sub(#legacy + 1)
+        end
+    end
+    return url
+end
 
 function Source:getCoverHeaders()
     return {
@@ -35,31 +53,52 @@ function Source:parseSearch(html)
                 for image_url in preceding:gmatch('data%-image="([^"]+)"') do
                     cover = image_url
                 end
+                if not cover then
+                    local card_block = preceding:match('.*<div[^>]-class="[^"]*row[^"]*"[^>]*>([%s%S]*)$')
+                        or preceding
+                    -- Prefer portrait <source srcset="..."> (60x85) inside <picture>
+                    -- over landscape-cropped <img src="..."> (180x80).
+                    for source_tag in card_block:gmatch("(<source[^>]*>)") do
+                        local srcset = Util.getAttribute(source_tag, "srcset")
+                        local first_url = srcset and srcset:match("^%s*([^%s,]+)")
+                        if first_url and first_url ~= "" then
+                            cover = first_url
+                        end
+                    end
+                    if not cover then
+                        local has_picture = card_block:find("<picture>", 1, true) ~= nil
+                        for img_tag in card_block:gmatch("(<img[^>]*>)") do
+                            local cls = Util.getAttribute(img_tag, "class") or ""
+                            local itemprop = Util.getAttribute(img_tag, "itemprop") or ""
+                            if cls:find("cover", 1, true) or itemprop == "image" or has_picture then
+                                local src = Util.getAttribute(img_tag, "data-src")
+                                    or Util.getAttribute(img_tag, "src")
+                                if src and src ~= "" then
+                                    cover = src
+                                end
+                            end
+                        end
+                    end
+                end
+                local next_boundary = html:find("<h3", heading_end + 1, true) or (#html + 1)
+                local row_end = html:find('<div[^>]-class="[^"]*row[^"]*"', heading_end + 1)
+                if row_end and row_end < next_boundary then
+                    next_boundary = row_end
+                end
+                local trailing = html:sub(heading_end + 1, next_boundary - 1)
+                local is_full = trailing:find("label%-full") ~= nil
+                    or trailing:find("full%-label") ~= nil
                 table.insert(stories, {
                     source_id = self.id,
                     title = Util.decodeHtml(title),
                     url = Util.absoluteUrl(self.base_url, href),
                     cover_url = Util.absoluteUrl(self.base_url, cover),
                     kind = self.kind,
+                    is_full = is_full or nil,
                 })
             end
         end
         position = heading_end + 1
-    end
-
-    if #stories == 0 then
-        local error_msg = "Lỗi Parse 0 truyện, HTML size: " .. tostring(#html)
-        if html:find("Cloudflare", 1, true) or html:find("Just a moment", 1, true) then
-            error_msg = error_msg .. " - Bị Cloudflare block"
-        elseif html:find("truyen%-title") or html:find("itemprop") then
-            error_msg = error_msg .. " - Có tag nhưng parse lỗi"
-        end
-        table.insert(stories, {
-            source_id = self.id,
-            title = error_msg,
-            url = self.base_url,
-            kind = self.kind,
-        })
     end
 
     return Util.uniqueBy(stories, "url")
@@ -133,6 +172,15 @@ function Source:parseStoryDetails(html)
         and html:sub(info_start, (info_end or (#html + 1)) - 1)
         or ""
 
+    local book_block = html:match('<div[^>]-class="[^"]*book[^"]*"[^>]*>([%s%S]-)</div>') or ""
+    local cover_url
+    for img_tag in book_block:gmatch("(<img[^>]*>)") do
+        cover_url = Util.getAttribute(img_tag, "src") or Util.getAttribute(img_tag, "data-src")
+        if cover_url and cover_url ~= "" then
+            break
+        end
+    end
+
     return {
         description = Util.stripTags(description_html)
             ~= "" and Util.stripTags(description_html)
@@ -142,11 +190,15 @@ function Source:parseStoryDetails(html)
             info_html:match('<span[^>]-class="[^"]*text%-success[^"]*"[^>]*>([%s%S]-)</span>')
         ),
         genres = Util.parseGenreNames(info_html),
+        cover_url = cover_url and Util.absoluteUrl(self.base_url, cover_url) or nil,
     }
 end
 
 function Source:getStoryDetails(story)
-    local html, err = Http:get(story.url)
+    if type(story) == "table" and type(story.details) == "table" and story.details.description then
+        return story.details
+    end
+    local html, err = Http:get(normalizeUrl(self, story.url))
     if not html then
         return nil, err
     end
@@ -175,6 +227,9 @@ function Source:parseStoryPage(html, story, page)
 
     local total_pages = tonumber(html:match('id="total%-page"[^>]-value="(%d+)"')) or 1
     story.details = self:parseStoryDetails(html)
+    if story.details and story.details.status and story.details.status:lower():find("full", 1, true) then
+        story.is_full = true
+    end
     return {
         story = story,
         chapters = Util.uniqueBy(chapters, "url"),
@@ -185,6 +240,7 @@ end
 
 function Source:getStoryPage(story, page)
     page = page or 1
+    story.url = normalizeUrl(self, story.url)
     local story_url = Util.withTrailingSlash(story.url)
     local page_url = page > 1 and (story_url .. "trang-" .. page .. "/") or story_url
     local html, err = Http:get(page_url)
@@ -243,6 +299,7 @@ function Source:parseChapter(html, chapter)
 end
 
 function Source:getChapter(chapter)
+    chapter.url = normalizeUrl(self, chapter.url)
     local html, err = Http:get(chapter.url)
     if not html then
         return nil, err
@@ -251,6 +308,7 @@ function Source:getChapter(chapter)
 end
 
 function Source:getChapterAsync(chapter)
+    chapter.url = normalizeUrl(self, chapter.url)
     local html, err = Http:requestAsync("GET", chapter.url, nil, nil)
     if not html then
         return nil, err

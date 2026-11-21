@@ -6,13 +6,17 @@ local Source = {
     id = "truyendich",
     name = "Truyendich",
     kind = "text",
-    base_url = "https://truyendich.ai",
+    -- Verified active domain on 2026-11-21; SourceRegistry preserves custom domains in Storage.
+    base_url = "https://truyendich.us",
+    legacy_base_urls = {
+        "https://truyendich.ai",
+    },
     max_concurrent = 2,
 }
 
 local function requestHeaders(referer)
     return {
-        ["Referer"] = referer or "https://truyendich.ai/",
+        ["Referer"] = referer or Source.base_url .. "/",
     }
 end
 
@@ -55,7 +59,7 @@ end
 
 function Source:search(query)
     local encoded = ko_util.urlEncode(query):gsub("%%20", "+")
-    local html, err = Http:get(self.base_url .. "/tim-kiem?keyword=" .. encoded, requestHeaders())
+    local html, err = Http:get(self.base_url .. "/tim-kiem?q=" .. encoded, requestHeaders())
     if not html then
         return nil, err
     end
@@ -143,7 +147,8 @@ function Source:parseStoryPage(html, story, page)
     end
 
     local total_pages = 1
-    for p_num in html:gmatch(slug .. "/trang%-(%d+)") do
+    local escaped_slug = slug:gsub("([^%w])", "%%%1")
+    for p_num in html:gmatch(escaped_slug .. "/trang%-(%d+)") do
         total_pages = math.max(total_pages, tonumber(p_num) or 1)
     end
     local next_pages = html:match(">%s*%d+%s*<!%-%-.-%-%->%s*/%s*<!%-%-.-%-%->%s*(%d+)%s*<")

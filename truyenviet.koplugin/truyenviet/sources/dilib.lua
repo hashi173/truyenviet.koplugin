@@ -1,6 +1,7 @@
 local Http = require("truyenviet/http_client")
 local Util = require("truyenviet/helpers")
 local GDrive = require("truyenviet/gdrive_downloader")
+local EbookDownloader = require("truyenviet/ebook_downloader")
 local Debug = require("truyenviet/debugger")
 local ko_util = require("util")
 
@@ -15,188 +16,69 @@ function Source:getCoverHeaders()
     return { ["Referer"] = self.base_url .. "/" }
 end
 
--- Categories for browsing
+-- Danh mục sách đọc (EPUB / PDF) trên Dilib, ưu tiên các chuyên mục có tỷ lệ
+-- sách còn link tải cao nhất lên đầu và loại bỏ các mục 100% bị gỡ bản quyền (DMCA).
 local LIBRARY_CATEGORIES = {
-    { name = "Thư Viện", url = "/thu-vien/" },
-    { name = "Sách Bộ", url = "/sach-bo/" },
-    { name = "Truyện Tranh", url = "/truyen-tranh/" },
-    { name = "Truyện Tranh Manga", url = "/truyen-tranh/manga/" },
-    { name = "Truyện Tranh Manhua", url = "/truyen-tranh/manhua/" },
-    { name = "Truyện Tranh Manhwa", url = "/truyen-tranh/manhwa/" },
-    { name = "Truyện Tranh Manga", url = "/truyen-tranh/manga/" },
-    { name = "Truyện Tranh Manhua", url = "/truyen-tranh/manhua/" },
-    { name = "Truyện Tranh Manhwa", url = "/truyen-tranh/manhwa/" },
-    { name = "Truyện Tranh Action", url = "/truyen-tranh/action/" },
-    { name = "Truyện Tranh Adventure", url = "/truyen-tranh/adventure/" },
-    { name = "Truyện Tranh Comedy", url = "/truyen-tranh/comedy/" },
-    { name = "Truyện Tranh Fantasy", url = "/truyen-tranh/fantasy/" },
-    { name = "Truyện Tranh Shounen", url = "/truyen-tranh/shounen/" },
-    { name = "Truyện Tranh Shoujo", url = "/truyen-tranh/shoujo/" },
-    { name = "Truyện Tranh Supernatural", url = "/truyen-tranh/supernatural/" },
-    { name = "Truyện Tranh Sci-Fi", url = "/truyen-tranh/sci-fi/" },
-    { name = "Truyện Tranh Martial Arts", url = "/truyen-tranh/martial-arts/" },
-    { name = "Truyện Tranh Seinen", url = "/truyen-tranh/seinen/" },
-    { name = "Truyện Tranh Drama", url = "/truyen-tranh/drama/" },
-    { name = "Truyện Tranh Mystery", url = "/truyen-tranh/mystery/" },
-    { name = "Truyện Tranh Cooking", url = "/truyen-tranh/cooking/" },
-    { name = "Truyện Tranh Harem", url = "/truyen-tranh/harem/" },
-    { name = "Truyện Tranh Romance", url = "/truyen-tranh/romance/" },
-    { name = "Truyện Tranh School Life", url = "/truyen-tranh/school-life/" },
-    { name = "Truyện Tranh Historical", url = "/truyen-tranh/historical/" },
-    { name = "Truyện Tranh Psychological", url = "/truyen-tranh/psychological/" },
-    { name = "Truyện Tranh Tragedy", url = "/truyen-tranh/tragedy/" },
-    { name = "Truyện Tranh Truyện Màu", url = "/truyen-tranh/truyen-mau/" },
-    { name = "Truyện Tranh Horror", url = "/truyen-tranh/horror/" },
-    { name = "Truyện Tranh Slice Of Life", url = "/truyen-tranh/slice-of-life/" },
-    { name = "Truyện Tranh Adult (18+)", url = "/truyen-tranh/adult-18/" },
-    { name = "Truyện Tranh Sports", url = "/truyen-tranh/sports/" },
-    { name = "Truyện Tranh Ecchi", url = "/truyen-tranh/ecchi/" },
-    { name = "Truyện Tranh Webtoon", url = "/truyen-tranh/webtoon/" },
-    { name = "Truyện Tranh Mature", url = "/truyen-tranh/mature/" },
-    { name = "Truyện Tranh Tu Tiên", url = "/truyen-tranh/tu-tien/" },
-    { name = "Truyện Tranh Vampire", url = "/truyen-tranh/vampire/" },
-    { name = "Truyện Tranh Josei", url = "/truyen-tranh/josei/" },
-    { name = "Truyện Tranh Xuyên Không", url = "/truyen-tranh/xuyen-khong/" },
-    { name = "Truyện Tranh Magic", url = "/truyen-tranh/magic/" },
-    { name = "Truyện Tranh Monsters", url = "/truyen-tranh/monsters/" },
-    { name = "Truyện Tranh Hệ Thống", url = "/truyen-tranh/he-thong/" },
-    { name = "Phim Tài Liệu - Khoa Học", url = "/rap-chieu-phim/tai-lieu-khoa-hoc/" },
-    { name = "Phim Tâm Linh - Tỉnh Thức", url = "/rap-chieu-phim/tam-linh-tinh-thuc/" },
-    { name = "Phim Khám Phá Thế Giới", url = "/rap-chieu-phim/kham-pha-the-gioi/" },
-    { name = "Phim Hoạt Hình - Anime", url = "/rap-chieu-phim/hoat-hinh-anime/" },
-    { name = "Phim Võ Thuật - Hành Động", url = "/rap-chieu-phim/vo-thuat-hanh-dong/" },
-    { name = "Phim Hình Sự - Trinh Thám", url = "/rap-chieu-phim/hinh-su-trinh-tham/" },
-    { name = "Phim Tâm Lý - Tình Cảm", url = "/rap-chieu-phim/tam-ly-tinh-cam/" },
-    { name = "Phim Phiêu Lưu - Sinh Tồn", url = "/rap-chieu-phim/phieu-luu-sinh-ton/" },
-    { name = "Phim Khoa Học - Giả Tưởng", url = "/rap-chieu-phim/khoa-hoc-gia-tuong/" },
-    { name = "Phim Chiến Tranh - Lịch Sử", url = "/rap-chieu-phim/chien-tranh-lich-su/" },
-    { name = "Phim Cổ Trang - Kiếm Hiệp", url = "/rap-chieu-phim/co-trang-kiem-hiep/" },
-    { name = "Phim Ma - Kinh Dị", url = "/rap-chieu-phim/phim-ma-kinh-di/" },
-    { name = "Phim Hài - Vui Nhộn", url = "/rap-chieu-phim/phim-hai-vui-nhon/" },
-    { name = "Phim Thuyết Minh - Lồng Tiếng", url = "/rap-chieu-phim/thuyet-minh-long-tieng/" },
-    { name = "Nhạc Pop - Ballad", url = "/am-nhac/pop-ballad/" },
-    { name = "Nhạc Dance - Edm", url = "/am-nhac/dance-edm/" },
-    { name = "Nhạc Hip Hop - Rap", url = "/am-nhac/hip-hop-rap/" },
-    { name = "Nhạc Thánh Ca", url = "/am-nhac/thanh-ca/" },
-    { name = "Nhạc Phật Giáo", url = "/am-nhac/nhac-phat-giao/" },
-    { name = "Nhạc Chữa Lành", url = "/am-nhac/nhac-chua-lanh/" },
-    { name = "Nhạc Không Lời", url = "/am-nhac/nhac-khong-loi/" },
-    { name = "Nhạc Thiền Định", url = "/am-nhac/nhac-thien-dinh/" },
-    { name = "Nhạc Năng Lượng", url = "/am-nhac/nhac-nang-luong/" },
-    { name = "Nhạc Tình Ca - Love Song", url = "/am-nhac/tinh-ca-love-song/" },
-    { name = "Nhạc Audiophile", url = "/am-nhac/audiophile/" },
-    { name = "Nhạc Giao Hưởng", url = "/am-nhac/giao-huong/" },
-    { name = "Sách Tâm Lý - Kỹ Năng", url = "/thu-vien/tam-ly-ky-nang/" },
-    { name = "Sách Tôn Giáo - Tâm Linh", url = "/thu-vien/ton-giao-tam-linh/" },
-    { name = "Sách Khoa Học - Công Nghệ", url = "/thu-vien/khoa-hoc-cong-nghe/" },
-    { name = "Sách Kiến Trúc - Xây Dựng", url = "/thu-vien/kien-truc-xay-dung/" },
-    { name = "Sách Nông - Lâm - Ngư", url = "/thu-vien/nong-lam-ngu/" },
-    { name = "Sách Y Học - Sức Khỏe", url = "/thu-vien/y-hoc-suc-khoe/" },
-    { name = "Sách Lịch Sử - Quân Sự", url = "/thu-vien/lich-su-quan-su/" },
-    { name = "Sách Nhân Vật Lịch Sử", url = "/thu-vien/nhan-vat-lich-su/" },
-    { name = "Sách Hồi Ký - Tùy Bút", url = "/thu-vien/hoi-ky-tuy-but/" },
-    { name = "Sách Quản Trị - Kinh Doanh", url = "/thu-vien/quan-tri-kinh-doanh/" },
-    { name = "Sách Self Help - Khởi Nghiệp", url = "/thu-vien/self-help-khoi-nghiep/" },
-    { name = "Sách Marketing - Bán Hàng", url = "/thu-vien/marketing-ban-hang/" },
-    { name = "Sách Triết Học - Lý Luận", url = "/thu-vien/triet-hoc-ly-luan/" },
-    { name = "Sách Đường Lối - Chính Trị", url = "/thu-vien/duong-loi-chinh-tri/" },
-    { name = "Sách Thư Viện Pháp Luật", url = "/thu-vien/thu-vien-phap-luat/" },
-    { name = "Sách Khai Tâm - Mở Trí", url = "/thu-vien/khai-tam-mo-tri/" },
-    { name = "Sách Văn Hóa - Xã Hội", url = "/thu-vien/van-hoa-xa-hoi/" },
+    { name = "Thư Viện Sách Mới", url = "/thu-vien/" },
+    { name = "Sách Truyện Ngắn - Tiểu Thuyết", url = "/thu-vien/truyen-ngan-tieu-thuyet/" },
     { name = "Sách Văn Học - Nghệ Thuật", url = "/thu-vien/van-hoc-nghe-thuat/" },
     { name = "Sách Tác Phẩm Kinh Điển", url = "/thu-vien/tac-pham-kinh-dien/" },
-    { name = "Sách Giáo Dục - Đào Tạo", url = "/thu-vien/giao-duc-dao-tao/" },
-    { name = "Sách Tài Liệu - Tham Khảo", url = "/thu-vien/tai-lieu-tham-khao/" },
-    { name = "Sách Công Nghệ Thông Tin", url = "/thu-vien/cong-nghe-thong-tin/" },
-    { name = "Sách Thể Thao - Võ Thuật", url = "/thu-vien/the-thao-vo-thuat/" },
-    { name = "Sách Yoga - Thiền", url = "/thu-vien/yoga-thien/" },
-    { name = "Sách Phát Triển Bản Thân", url = "/thu-vien/phat-trien-ban-than/" },
-    { name = "Sách Ẩm Thực - Nấu Ăn", url = "/thu-vien/am-thuc-nau-an/" },
-    { name = "Sách Âm Nhạc - Thơ Ca - Hội Họa", url = "/thu-vien/am-nhac-tho-ca-hoi-hoa/" },
-    { name = "Sách Nuôi Dưỡng Tâm Hồn", url = "/thu-vien/nuoi-duong-tam-hon/" },
-    { name = "Sách Tình cảm - Gia Đình", url = "/thu-vien/tinh-cam-gia-dinh/" },
-    { name = "Sách Trẻ Em - Thiếu Nhi", url = "/thu-vien/tre-em-thieu-nhi/" },
-    { name = "Sách Tuổi Học Trò", url = "/thu-vien/tuoi-hoc-tro/" },
+    { name = "Sách Lịch Sử - Quân Sự", url = "/thu-vien/lich-su-quan-su/" },
+    { name = "Sách Nhân Vật Lịch Sử", url = "/thu-vien/nhan-vat-lich-su/" },
+    { name = "Sách Tôn Giáo - Tâm Linh", url = "/thu-vien/ton-giao-tam-linh/" },
+    { name = "Sách Triết Học - Lý Luận", url = "/thu-vien/triet-hoc-ly-luan/" },
     { name = "Sách Tử Vi - Phong Thủy", url = "/thu-vien/tu-vi-phong-thuy/" },
-    { name = "Sách Biên Khảo - Địa Lý", url = "/thu-vien/bien-khao-dia-ly/" },
     { name = "Sách Khám Phá - Bí Ẩn", url = "/thu-vien/kham-pha-bi-an/" },
-    { name = "Sách Huyền Bí - Giả Tưởng", url = "/thu-vien/huyen-bi-gia-tuong/" },
+    { name = "Sách Văn Hóa - Xã Hội", url = "/thu-vien/van-hoa-xa-hoi/" },
+    { name = "Sách Tài Liệu - Tham Khảo", url = "/thu-vien/tai-lieu-tham-khao/" },
+    { name = "Sách Phát Triển Bản Thân", url = "/thu-vien/phat-trien-ban-than/" },
+    { name = "Sách Khai Tâm - Mở Trí", url = "/thu-vien/khai-tam-mo-tri/" },
     { name = "Sách Cổ Tích - Thần Thoại", url = "/thu-vien/co-tich-than-thoai/" },
-    { name = "Sách Phiêu Lưu - Mạo Hiểm", url = "/thu-vien/phieu-luu-mao-hiem/" },
-    { name = "Sách Trinh Thám - Hình Sự - Kinh Dị", url = "/thu-vien/trinh-tham-hinh-su-kinh-di/" },
-    { name = "Sách Tiếu Lâm - Hài Hước", url = "/thu-vien/tieu-lam-hai-huoc/" },
-    { name = "Sách Lãng Mạn - Ngôn Tình", url = "/thu-vien/lang-man-ngon-tinh/" },
-    { name = "Sách Đam Mỹ - Bách Hợp", url = "/thu-vien/dam-my-bach-hop/" },
-    { name = "Sách Người Lớn (18+)", url = "/thu-vien/nguoi-lon-18/" },
-    { name = "Sách Truyện Ngắn - Tiểu Thuyết", url = "/thu-vien/truyen-ngan-tieu-thuyet/" },
-    { name = "Sách Truyện Dài Trọn Bộ", url = "/thu-vien/truyen-dai-tron-bo/" },
     { name = "Sách Kịch Bản - Sân Khấu", url = "/thu-vien/kich-ban-san-khau/" },
-    { name = "Sách Kiếm Hiệp - Tiên Hiệp", url = "/thu-vien/kiem-hiep-tien-hiep/" },
-    { name = "Sách Huyền Huyễn - Phóng Tác", url = "/thu-vien/huyen-huyen-phong-tac/" },
-    { name = "Sách Đang Cập Nhật", url = "/thu-vien/dang-cap-nhat/" },
-    { name = "Xem Thêm Bình Luận", url = "/binh-luan/" },
+    { name = "Sách Yoga - Thiền", url = "/thu-vien/yoga-thien/" },
+    { name = "Sách Âm Nhạc - Thơ Ca - Hội Họa", url = "/thu-vien/am-nhac-tho-ca-hoi-hoa/" },
+    { name = "Sách Tâm Lý - Kỹ Năng", url = "/thu-vien/tam-ly-ky-nang/" },
+    { name = "Sách Biên Khảo - Địa Lý", url = "/thu-vien/bien-khao-dia-ly/" },
+    { name = "Sách Nuôi Dưỡng Tâm Hồn", url = "/thu-vien/nuoi-duong-tam-hon/" },
+    { name = "Sách Trẻ Em - Thiếu Nhi", url = "/thu-vien/tre-em-thieu-nhi/" },
+    { name = "Sách Giáo Dục - Đào Tạo", url = "/thu-vien/giao-duc-dao-tao/" },
+    { name = "Sách Thư Viện Pháp Luật", url = "/thu-vien/thu-vien-phap-luat/" },
+    { name = "Sách Tiếu Lâm - Hài Hước", url = "/thu-vien/tieu-lam-hai-huoc/" },
+    { name = "Sách Khoa Học - Công Nghệ", url = "/thu-vien/khoa-hoc-cong-nghe/" },
+    { name = "Sách Nông - Lâm - Ngư", url = "/thu-vien/nong-lam-ngu/" },
+    { name = "Sách Y Học - Sức Khỏe", url = "/thu-vien/y-hoc-suc-khoe/" },
+    { name = "Sách Hồi Ký - Tùy Bút", url = "/thu-vien/hoi-ky-tuy-but/" },
+    { name = "Sách Self Help - Khởi Nghiệp", url = "/thu-vien/self-help-khoi-nghiep/" },
+    { name = "Sách Tình Cảm - Gia Đình", url = "/thu-vien/tinh-cam-gia-dinh/" },
+    { name = "Sách Truyện Dài Trọn Bộ", url = "/thu-vien/truyen-dai-tron-bo/" },
+    { name = "Sách Quản Trị - Kinh Doanh", url = "/thu-vien/quan-tri-kinh-doanh/" },
+    { name = "Sách Đường Lối - Chính Trị", url = "/thu-vien/duong-loi-chinh-tri/" },
+    { name = "Sách Tuổi Học Trò", url = "/thu-vien/tuoi-hoc-tro/" },
+    { name = "Tóm Tắt Sách", url = "/tom-tat-sach/" },
 }
 
+-- Danh mục Sách nói / Radio / Kịch truyền thanh còn hoạt động trên Dilib
 local AUDIOBOOK_CATEGORIES = {
-    { name = "Góc Suy Ngẫm", url = "/radio/goc-suy-ngam/" },
-    { name = "Radio Tình Yêu", url = "/radio/radio-tinh-yeu/" },
+    { name = "Radio Truyện Ngắn (kèm PDF/EPUB)", url = "/radio/radio-truyen-ngan/" },
+    { name = "Radio Truyện Dài Kỳ (kèm PDF/EPUB)", url = "/radio/radio-truyen-dai-ky/" },
+    { name = "Kịch Truyền Thanh (kèm PDF/EPUB)", url = "/radio/kich-truyen-thanh/" },
     { name = "Radio Cho Tâm Hồn", url = "/radio/radio-cho-tam-hon/" },
-    { name = "Radio Truyện Ngắn", url = "/radio/radio-truyen-ngan/" },
-    { name = "Radio Truyện Dài Kỳ", url = "/radio/radio-truyen-dai-ky/" },
+    { name = "Radio Tình Yêu", url = "/radio/radio-tinh-yeu/" },
     { name = "Tản Mạn Radio", url = "/radio/tan-man-radio/" },
-    { name = "Kịch Truyền Thanh", url = "/radio/kich-truyen-thanh/" },
-    { name = "Tóm Tắt Sách", url = "/radio/tom-tat-sach/" },
     { name = "Sách nói Tâm Lý - Kỹ Năng", url = "/sach-noi/tam-ly-ky-nang/" },
     { name = "Sách nói Tôn Giáo - Tâm Linh", url = "/sach-noi/ton-giao-tam-linh/" },
-    { name = "Sách nói Khoa Học - Công Nghệ", url = "/sach-noi/khoa-hoc-cong-nghe/" },
-    { name = "Sách nói Kiến Trúc - Xây Dựng", url = "/sach-noi/kien-truc-xay-dung/" },
-    { name = "Sách nói Nông - Lâm - Ngư", url = "/sach-noi/nong-lam-ngu/" },
-    { name = "Sách nói Y Học - Sức Khỏe", url = "/sach-noi/y-hoc-suc-khoe/" },
-    { name = "Sách nói Lịch Sử - Quân Sự", url = "/sach-noi/lich-su-quan-su/" },
-    { name = "Sách nói Nhân Vật Lịch Sử", url = "/sach-noi/nhan-vat-lich-su/" },
-    { name = "Sách nói Hồi Ký - Tùy Bút", url = "/sach-noi/hoi-ky-tuy-but/" },
-    { name = "Sách nói Quản Trị - Kinh Doanh", url = "/sach-noi/quan-tri-kinh-doanh/" },
-    { name = "Sách nói Self Help - Khởi Nghiệp", url = "/sach-noi/self-help-khoi-nghiep/" },
-    { name = "Sách nói Marketing - Bán Hàng", url = "/sach-noi/marketing-ban-hang/" },
-    { name = "Sách nói Triết Học - Lý Luận", url = "/sach-noi/triet-hoc-ly-luan/" },
-    { name = "Sách nói Đường Lối - Chính Trị", url = "/sach-noi/duong-loi-chinh-tri/" },
-    { name = "Sách nói Thư Viện Pháp Luật", url = "/sach-noi/thu-vien-phap-luat/" },
-    { name = "Sách nói Khai Tâm - Mở Trí", url = "/sach-noi/khai-tam-mo-tri/" },
-    { name = "Sách nói Văn Hóa - Xã Hội", url = "/sach-noi/van-hoa-xa-hoi/" },
-    { name = "Sách nói Văn Học - Nghệ Thuật", url = "/sach-noi/van-hoc-nghe-thuat/" },
-    { name = "Sách nói Tác Phẩm Kinh Điển", url = "/sach-noi/tac-pham-kinh-dien/" },
-    { name = "Sách nói Giáo Dục - Đào Tạo", url = "/sach-noi/giao-duc-dao-tao/" },
-    { name = "Sách nói Tài Liệu - Tham Khảo", url = "/sach-noi/tai-lieu-tham-khao/" },
-    { name = "Sách nói Công Nghệ Thông Tin", url = "/sach-noi/cong-nghe-thong-tin/" },
-    { name = "Sách nói Thể Thao - Võ Thuật", url = "/sach-noi/the-thao-vo-thuat/" },
-    { name = "Sách nói Yoga - Thiền", url = "/sach-noi/yoga-thien/" },
-    { name = "Sách nói Phát Triển Bản Thân", url = "/sach-noi/phat-trien-ban-than/" },
-    { name = "Sách nói Ẩm Thực - Nấu Ăn", url = "/sach-noi/am-thuc-nau-an/" },
-    { name = "Sách nói Âm Nhạc - Thơ Ca - Hội Họa", url = "/sach-noi/am-nhac-tho-ca-hoi-hoa/" },
-    { name = "Sách nói Nuôi Dưỡng Tâm Hồn", url = "/sach-noi/nuoi-duong-tam-hon/" },
-    { name = "Sách nói Tình cảm - Gia Đình", url = "/sach-noi/tinh-cam-gia-dinh/" },
-    { name = "Sách nói Trẻ Em - Thiếu Nhi", url = "/sach-noi/tre-em-thieu-nhi/" },
-    { name = "Sách nói Tuổi Học Trò", url = "/sach-noi/tuoi-hoc-tro/" },
-    { name = "Sách nói Tử Vi - Phong Thủy", url = "/sach-noi/tu-vi-phong-thuy/" },
-    { name = "Sách nói Biên Khảo - Địa Lý", url = "/sach-noi/bien-khao-dia-ly/" },
-    { name = "Sách nói Khám Phá - Bí Ẩn", url = "/sach-noi/kham-pha-bi-an/" },
-    { name = "Sách nói Huyền Bí - Giả Tưởng", url = "/sach-noi/huyen-bi-gia-tuong/" },
-    { name = "Sách nói Cổ Tích - Thần Thoại", url = "/sach-noi/co-tich-than-thoai/" },
-    { name = "Sách nói Phiêu Lưu - Mạo Hiểm", url = "/sach-noi/phieu-luu-mao-hiem/" },
-    { name = "Sách nói Trinh Thám - Hình Sự - Kinh Dị", url = "/sach-noi/trinh-tham-hinh-su-kinh-di/" },
-    { name = "Sách nói Tiếu Lâm - Hài Hước", url = "/sach-noi/tieu-lam-hai-huoc/" },
-    { name = "Sách nói Lãng Mạn - Ngôn Tình", url = "/sach-noi/lang-man-ngon-tinh/" },
-    { name = "Sách nói Đam Mỹ - Bách Hợp", url = "/sach-noi/dam-my-bach-hop/" },
-    { name = "Sách nói Người Lớn (18+)", url = "/sach-noi/nguoi-lon-18/" },
     { name = "Sách nói Truyện Ngắn - Tiểu Thuyết", url = "/sach-noi/truyen-ngan-tieu-thuyet/" },
-    { name = "Sách nói Truyện Dài Trọn Bộ", url = "/sach-noi/truyen-dai-tron-bo/" },
-    { name = "Sách nói Kịch Bản - Sân Khấu", url = "/sach-noi/kich-ban-san-khau/" },
-    { name = "Sách nói Kiếm Hiệp - Tiên Hiệp", url = "/sach-noi/kiem-hiep-tien-hiep/" },
-    { name = "Sách nói Huyền Huyễn - Phóng Tác", url = "/sach-noi/huyen-huyen-phong-tac/" },
-    { name = "Sách nói Đang Cập Nhật", url = "/sach-noi/dang-cap-nhat/" },
+    { name = "Sách nói Tác Phẩm Kinh Điển", url = "/sach-noi/tac-pham-kinh-dien/" },
+    { name = "Sách nói Nhân Vật Lịch Sử", url = "/sach-noi/nhan-vat-lich-su/" },
+    { name = "Sách nói Triết Học - Lý Luận", url = "/sach-noi/triet-hoc-ly-luan/" },
 }
 
-function Source:getCategories()
+local STATIC_IGNORED_PATHS = {
+    ["/thu-vien-sach-dien-tu-1066.html"] = true,
+    ["/ban-quyen-1055.html"] = true,
+}
+
+function Source:getLibraryCategories()
     local categories = {}
     for _, cat in ipairs(LIBRARY_CATEGORIES) do
         table.insert(categories, {
@@ -205,6 +87,11 @@ function Source:getCategories()
             is_audio = false,
         })
     end
+    return categories
+end
+
+function Source:getAudioCategories()
+    local categories = {}
     for _, cat in ipairs(AUDIOBOOK_CATEGORIES) do
         table.insert(categories, {
             name = "🔊 " .. cat.name,
@@ -215,69 +102,143 @@ function Source:getCategories()
     return categories
 end
 
--- Parse book listing page
+function Source:getCategories()
+    local categories = self:getLibraryCategories()
+    for _, cat in ipairs(self:getAudioCategories()) do
+        table.insert(categories, cat)
+    end
+    return categories
+end
+
+local function cleanBookTitle(raw_title)
+    local title = Util.decodeHtml(Util.trim(raw_title or ""))
+    local is_audio = title:match("^Audio") ~= nil or title:match("^Sách nói") ~= nil
+    title = title:gsub("^Audio book%s+", "")
+    title = title:gsub("^Đọc [Ss]ách%s+", "")
+    title = title:gsub("^Đọc [Tt]ruyện [Tt]ranh%s+", "")
+    title = title:gsub("^Truyện [Tt]ranh%s+", "")
+    title = title:gsub("^Sách%s+", "")
+    title = title:gsub("%s+PDF$", "")
+    title = title:gsub("%s+EPUB$", "")
+    return Util.trim(title), is_audio
+end
+
+-- Parse book listing page (scoped to #woo-main when present so sidebar widgets are excluded)
 function Source:parseListing(html)
+    local raw = tostring(html or "")
+    local scope = raw:match('id="woo%-main"[^>]*>([%s%S]-)</main>')
+        or raw:match('id="woo%-main"[^>]*>([%s%S]-)<aside')
+        or raw:match('id="woo%-main"[^>]*>([%s%S]-)id="secondary"')
+        or raw:match('id="woo%-main"[^>]*>([%s%S]-)<footer')
+        or raw:match('id="woo%-main"[^>]*>([%s%S]*)$')
+        or raw
+
     local books = {}
-    
-    -- Pattern: <a title="..." href="/slug-id.html" class="woocommerce-LoopProduct-link">
-    -- Hoặc các thẻ a có chứa hình ảnh.
-    for anchor, inner in html:gmatch('<a([^>]-)>(.-)</a>') do
+    local by_url = {}
+
+    for anchor, inner in scope:gmatch("<a([^>]-)>([%s%S]-)</a>") do
         local href = Util.getAttribute(anchor, "href")
-        local title = Util.getAttribute(anchor, "title")
-        local is_loop_product = anchor:find("woocommerce%-LoopProduct%-link")
-        
-        -- Nếu thẻ A không có title, thử tìm trong thẻ img
+        local title_attr = Util.getAttribute(anchor, "title")
+        local is_loop_product = anchor:find("woocommerce%-LoopProduct%-link") ~= nil
+
         local cover_url
-        if inner:find("<img") then
+        if inner:find("<img", 1, true) then
             cover_url = inner:match('<img[^>]-src="([^"]+)"')
-            if not title or title == "" then
-                title = inner:match('<img[^>]-alt="([^"]+)"')
+            if not title_attr or title_attr == "" then
+                title_attr = inner:match('<img[^>]-alt="([^"]+)"')
             end
         end
-        
-        -- Lọc link rác
-        if href and title and title ~= "" and not href:match("^#") and not href:match("javascript:") and href:match("%.html$") then
-            -- Bỏ qua các bài blog hoặc không phải truyện/sách (tuỳ vào class hoặc url)
-            if is_loop_product or (cover_url and href:match("%-%d+%.html$")) then
-                local is_audio = title:match("^Audio") ~= nil
-                title = title:gsub("^Audio book ", "")
-                title = title:gsub("^Sách ", "")
-                title = title:gsub(" PDF$", "")
-                
-                table.insert(books, {
-                    source_id = self.id,
-                    title = Util.decodeHtml(title),
-                    url = Util.absoluteUrl(self.base_url, href),
-                    cover_url = cover_url and Util.absoluteUrl(self.base_url, cover_url) or nil,
-                    kind = self.kind,
-                    is_audio = is_audio,
-                })
+
+        local path_only = href and href:gsub("^https?://[^/]+", ""):gsub("[?#].*$", "") or nil
+        if href and path_only and not STATIC_IGNORED_PATHS[path_only]
+                and not href:match("^#") and not href:match("^javascript:")
+                and path_only:match("%.html$") then
+            if is_loop_product or (cover_url and path_only:match("%-%d+%.html$")) then
+                local full_url = Util.absoluteUrl(self.base_url, path_only)
+                local raw_title = title_attr
+                if (not raw_title or raw_title == "") and not inner:find("<img", 1, true) then
+                    raw_title = Util.stripTags(inner)
+                end
+                local clean_title, is_audio = cleanBookTitle(raw_title)
+
+                -- Check if the text inside <h3><a>Title (Author)</a></h3> has author in parens
+                local text_body = not inner:find("<img", 1, true) and Util.trim(Util.stripTags(inner)) or ""
+                local paren_author = text_body:match("%(([^%(%)]+)%)%s*$")
+
+                -- Check if thumbnail overlay has badge like "7 quyển: 05:25:48"
+                local badge = inner:match("<div[^>]-background:#1e1e1e[^>]*>([^<]+)</div>")
+                badge = badge and Util.trim(Util.decodeHtml(badge)) or nil
+
+                if full_url and clean_title ~= "" then
+                    local existing = by_url[full_url]
+                    if not existing then
+                        local entry = {
+                            source_id = self.id,
+                            title = clean_title,
+                            url = full_url,
+                            cover_url = cover_url and Util.absoluteUrl(self.base_url, cover_url) or nil,
+                            kind = self.kind,
+                            is_audio = is_audio,
+                            author = paren_author,
+                            badge = badge,
+                        }
+                        by_url[full_url] = entry
+                        table.insert(books, entry)
+                    else
+                        if not existing.cover_url and cover_url then
+                            existing.cover_url = Util.absoluteUrl(self.base_url, cover_url)
+                        end
+                        if not existing.author and paren_author then
+                            existing.author = paren_author
+                        end
+                        if not existing.badge and badge then
+                            existing.badge = badge
+                        end
+                    end
+                end
             end
         end
     end
 
-    return Util.uniqueBy(books, "url")
+    return books
+end
+
+function Source:parseTotalPages(html, current_page)
+    local total_pages = tonumber(current_page) or 1
+    local raw = tostring(html or "")
+    for total in raw:gmatch("<b>%s*Trang%s*</b>%s*%d+%s*/%s*(%d+)") do
+        total_pages = math.max(total_pages, tonumber(total) or 1)
+    end
+    for p in raw:gmatch("/page/(%d+)") do
+        local pn = tonumber(p)
+        if pn and pn <= 100000 then
+            total_pages = math.max(total_pages, pn)
+        end
+    end
+    for p in raw:gmatch("[?&]page=(%d+)") do
+        local pn = tonumber(p)
+        if pn and pn <= 100000 then
+            total_pages = math.max(total_pages, pn)
+        end
+    end
+    return total_pages
 end
 
 function Source:getCategoryBooks(category, page)
     page = page or 1
-    local url = category.url
+    local base_cat_url = (category and category.url or (self.base_url .. "/thu-vien/")):gsub("/+$", "")
+    local url = base_cat_url .. "/"
     if page > 1 then
-        url = url .. "?page=" .. page
+        url = base_cat_url .. "/page/" .. page
     end
 
-    local html, err = Http:get(url)
+    local html, err = Http:get(url, self:getCoverHeaders())
     if not html then
         return nil, err
     end
 
     local books = self:parseListing(html)
-
-    -- Parse total pages
-    local total_pages = page
-    for p in html:gmatch('[?&]page=(%d+)') do
-        total_pages = math.max(total_pages, tonumber(p) or 1)
-    end
+    local total_pages = self:parseTotalPages(html, page)
 
     return {
         books = books,
@@ -287,59 +248,120 @@ function Source:getCategoryBooks(category, page)
     }
 end
 
--- Get book detail page
-function Source:getBookDetail(book)
-    local html, err = Http:get(book.url)
-    if not html then
-        return nil, err
-    end
+function Source:parseBookDetail(html, book)
+    html = tostring(html or "")
+    book = book or {}
 
-    -- Parse metadata
-    local title = html:match("<h1[^>]*>([^<]+)</h1>") or book.title
-    local author = html:match('<b>Tác giả :%s*</b>%s*<a[^>]*>([^<]+)</a>')
-        or html:match('<b>Tác giả :</b>%s*([^<]+)')
-    local narrator = html:match('<b>Giọng đọc :</b>%s*<a[^>]*>([^<]+)</a>')
-    local pages = html:match('<b>Số trang :</b>%s*(%d+)')
-    local format_info = html:match('<b>Định dạng :</b>%s*([^<]+)')
-    local views = html:match('<b>Lượt xem/nghe :</b>%s*(%d+)')
-    local size = html:match('<b>Kích thước :</b>%s*([^<]+)')
+    local title = html:match("<h1[^>]*>([^<]+)</h1>") or book.title or "Sách Dilib"
+    local author = html:match('<b>Tác giả%s*:%s*</b>%s*<a[^>]*>([^<]+)</a>')
+        or html:match('<b>Tác giả%s*:%s*</b>%s*([^<\n]+)')
+    local narrator = html:match('<b>Giọng đọc%s*:%s*</b>%s*<a[^>]*>([^<]+)</a>')
+        or html:match('<b>Giọng đọc%s*:%s*</b>%s*([^<\n]+)')
+    local pages = html:match('<b>Số trang%s*:%s*</b>%s*(%d+)')
+    local format_raw = html:match('<b>Định dạng%s*:%s*</b>%s*(.-)</p>')
+        or html:match('<b>Định dạng%s*:%s*</b>%s*([^<\n]+)')
+    local format_info = format_raw and Util.trim(Util.stripTags(format_raw):gsub("%s+", " ")) or nil
+    local views = html:match('<b>Lượt xem/nghe%s*:%s*</b>%s*(%d+)')
+    local size = html:match('<b>Kích thước%s*:%s*</b>%s*([^<\n]+)')
     local cover_url = html:match('class="border"[^>]-src="([^"]*)"')
         or html:match('src="([^"]*)"[^>]-class="border"')
 
-    -- Parse download links
-    local pdf_download_url = html:match('href="(/download/[^"]+)"')
-    local audio_download_url = html:match('href="(/audio/[^"]+)"')
-    local audio_size = html:match('Sách Nói %(([^%)]+)%)')
+    -- Parse all download links (/download/..., /download/epub/..., /download/mobi/..., etc.)
+    local pdf_download_url
+    local epub_download_url
+    local mobi_download_url
+    local azw3_download_url
 
-    -- Parse read online link
+    for dl_href in html:gmatch('href="(/download/[^"]+)"') do
+        local lower = dl_href:lower()
+        if lower:match("^/download/epub/") then
+            epub_download_url = epub_download_url or dl_href
+        elseif lower:match("^/download/mobi/") or lower:match("^/download/prc/") then
+            mobi_download_url = mobi_download_url or dl_href
+        elseif lower:match("^/download/azw3/") then
+            azw3_download_url = azw3_download_url or dl_href
+        else
+            pdf_download_url = pdf_download_url or dl_href
+        end
+    end
+
+    -- Parse read online link (/readbook/<code> redirects 301 to Google Drive PDF viewer)
     local read_online_url = html:match('href="(/readbook/[^"]+)"')
 
-    -- Parse audio source (direct MP3 URL)
+    -- Also check if main book area contains a direct Google Drive link
+    local main_section = html:match("(<h1[^>]*>[%s%S]-)id=\"comment\"")
+        or html:match("(<h1[^>]*>[%s%S]-)<footer")
+        or html
+    local direct_gdrive_url = main_section:match('(https?://drive%.google%.com/file/d/[^"\'%s<>]+)')
+        or main_section:match('(https?://drive%.google%.com/uc%?[^"\'%s<>]+)')
+
+    -- Smart fallback: if book has "Đọc Sách" (/readbook/...) or direct Google Drive link
+    -- without a separate /download/... link, capture it as the PDF download source!
+    local pdf_from_readbook = false
+    if not pdf_download_url then
+        if read_online_url then
+            pdf_download_url = read_online_url
+            pdf_from_readbook = true
+        elseif direct_gdrive_url then
+            pdf_download_url = direct_gdrive_url
+            pdf_from_readbook = true
+        end
+    end
+
+    local audio_download_url = html:match('href="(/audio/[^"]+)"')
+    local audio_size = html:match('Sách Nói %(([^%)]+)%)')
     local audio_src = html:match('src="(/img/audio/[^"]+%.mp3)"')
         or html:match("src='(/img/audio/[^']+%.mp3)'")
 
-    -- Parse audio chapters from JavaScript
+    -- Parse audio chapters (supports both modern <div id="muclucN" onclick="jumptime('...')"> and legacy <li>)
     local audio_chapters = {}
-    for timestamp, idx in html:gmatch('myaudio%.currentTime >= ([%d%.]+)[^}]*mouse_click%((%d+)%)') do
-        table.insert(audio_chapters, {
-            index = tonumber(idx),
-            start_time = tonumber(timestamp),
-        })
+    local seen_chapter_idx = {}
+    local mucluc_scope = html:match('<fieldset[^>]-id="mucluc"[^>]*>([%s%S]-)</fieldset>') or html
+    local pos = 1
+    while true do
+        local s, e, idx_str, ts_str = mucluc_scope:find(
+            '<div[^>]-id="mucluc(%d+)"[^>]-onclick="jumptime%(\'([%d%.]+)\'%)[^"]*"[^>]*>',
+            pos
+        )
+        if not s then break end
+        local next_s = mucluc_scope:find('<div[^>]-id="mucluc%d+"', e + 1)
+            or mucluc_scope:find("</fieldset>", e + 1, true)
+            or (#mucluc_scope + 1)
+        local chunk = mucluc_scope:sub(e + 1, next_s - 1)
+        local idx = tonumber(idx_str) or #audio_chapters
+        if not seen_chapter_idx[idx] then
+            seen_chapter_idx[idx] = true
+            local text = Util.trim(Util.stripTags(chunk):gsub("%s+", " "))
+            text = Util.trim(text:gsub("^%d+:%d+:%d+%s*", ""))
+            table.insert(audio_chapters, {
+                index = idx,
+                start_time = tonumber(ts_str) or 0,
+                name = text ~= "" and text or ("Phần " .. (idx + 1)),
+            })
+        end
+        pos = e + 1
     end
+    table.sort(audio_chapters, function(a, b) return (a.index or 0) < (b.index or 0) end)
 
-    -- Parse chapter names from the page
-    -- Look for ordered list or table of contents
-    local toc_html = html:match('<fieldset[^>]-id="mucluc"[^>]*>(.-)</fieldset>')
-        or html:match('<div[^>]-id="mucluc"[^>]*>(.-)</div>')
-    if toc_html then
-        local chapter_idx = 0
-        for item in toc_html:gmatch("<li[^>]*>(.-)</li>") do
-            chapter_idx = chapter_idx + 1
-            local name = Util.stripTags(item)
-            if name ~= "" then
-                for _, ch in ipairs(audio_chapters) do
-                    if ch.index == chapter_idx - 1 then
-                        ch.name = name
+    if #audio_chapters == 0 then
+        for timestamp, idx in html:gmatch('myaudio%.currentTime >= ([%d%.]+)[^}]*mouse_click%((%d+)%)') do
+            table.insert(audio_chapters, {
+                index = tonumber(idx),
+                start_time = tonumber(timestamp),
+            })
+        end
+        local toc_html = html:match('<fieldset[^>]-id="mucluc"[^>]*>([%s%S]-)</fieldset>')
+            or html:match('<div[^>]-id="mucluc"[^>]*>([%s%S]-)</div>')
+        if toc_html then
+            local chapter_idx = 0
+            for item in toc_html:gmatch("<li[^>]*>(.-)</li>") do
+                chapter_idx = chapter_idx + 1
+                local name = Util.stripTags(item)
+                if name ~= "" then
+                    for _, ch in ipairs(audio_chapters) do
+                        if ch.index == chapter_idx - 1 then
+                            ch.name = name
+                        end
                     end
                 end
             end
@@ -348,53 +370,186 @@ function Source:getBookDetail(book)
 
     -- Parse genres/categories
     local genres = {}
-    for anchor_attrs, anchor_html in html:gmatch('<a[^>]-class="button2"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>') do
-        local name = Util.stripTags(anchor_html)
-        if name ~= "" then
+    local seen_genre = {}
+    local genre_fieldset = html:match('<fieldset[^>]-id="pdf"[^>]*>([%s%S]-)</fieldset>') or html
+    for _, anchor_html in genre_fieldset:gmatch('<a[^>]-class="button2"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>') do
+        local name = Util.trim(Util.stripTags(anchor_html))
+        if name ~= "" and not seen_genre[name] then
+            seen_genre[name] = true
             table.insert(genres, name)
         end
     end
 
-    -- Description from meta
+    -- Parse related / same-series books (Sách cùng bộ / cùng tác giả)
+    local related_books = {}
+    local self_path = tostring(book.url or ""):gsub("^https?://[^/]+", "")
+    local seen_related = { [self_path] = true }
+    for rel_href, rel_inner in main_section:gmatch('<a[^>]+href="(/[^"#%?]+%-%d+%.html)"[^>]*>([%s%S]-)</a>') do
+        if not seen_related[rel_href] and not STATIC_IGNORED_PATHS[rel_href]
+                and not rel_href:find("^/tom%-tat%-sach/")
+                and not rel_href:find("^/truyen%-tranh/") then
+            local rel_text = Util.trim(Util.stripTags(rel_inner):gsub("%s+", " "))
+            -- Skip audio/music sidebar recommendations and empty image links
+            if rel_text ~= "" and not rel_inner:find("<img", 1, true)
+                    and not rel_text:find("^Sách nói:")
+                    and not rel_text:find("^Audio") then
+                seen_related[rel_href] = true
+                table.insert(related_books, {
+                    source_id = self.id,
+                    title = Util.decodeHtml(rel_text),
+                    url = Util.absoluteUrl(self.base_url, rel_href),
+                    kind = self.kind,
+                })
+            end
+        end
+    end
+
     local description = Util.getMetaContent(html, "name", "description") or ""
 
-    local has_pdf = pdf_download_url ~= nil
-    local has_audio = audio_src ~= nil or audio_download_url ~= nil
+    local abs_pdf = pdf_download_url and Util.absoluteUrl(self.base_url, pdf_download_url) or nil
+    local abs_epub = epub_download_url and Util.absoluteUrl(self.base_url, epub_download_url) or nil
+    local abs_mobi = mobi_download_url and Util.absoluteUrl(self.base_url, mobi_download_url) or nil
+    local abs_azw3 = azw3_download_url and Util.absoluteUrl(self.base_url, azw3_download_url) or nil
+    local abs_read = read_online_url and Util.absoluteUrl(self.base_url, read_online_url) or nil
+    local abs_audio_dl = audio_download_url and Util.absoluteUrl(self.base_url, audio_download_url) or nil
+    local abs_audio_src = audio_src and Util.absoluteUrl(self.base_url, audio_src) or nil
+
+    local has_pdf = abs_pdf ~= nil
+    local has_epub = abs_epub ~= nil
+    local has_mobi = abs_mobi ~= nil
+    local has_azw3 = abs_azw3 ~= nil
+    local has_ebook = has_pdf or has_epub or has_mobi or has_azw3
+    local has_audio = abs_audio_src ~= nil or abs_audio_dl ~= nil
+    local is_dmca = html:find("Khiếu Nại Bản Quyền", 1, true) ~= nil and not has_ebook and not has_audio
+
+    local clean_title = Util.decodeHtml(Util.trim(title))
+    local formats = {}
+    if abs_epub then
+        table.insert(formats, {
+            format = "epub",
+            label = "EPUB (Khuyên dùng cho máy đọc sách)",
+            filename = Util.safeName(clean_title, "book") .. ".epub",
+            url = abs_epub,
+        })
+    end
+    if abs_pdf then
+        table.insert(formats, {
+            format = "pdf",
+            label = pdf_from_readbook and "PDF (Tự động bắt từ link Đọc Sách / Google Drive)" or "PDF",
+            filename = Util.safeName(clean_title, "book") .. ".pdf",
+            url = abs_pdf,
+            fallback_url = (not pdf_from_readbook and abs_read ~= abs_pdf) and abs_read or nil,
+        })
+    end
+    if abs_mobi then
+        table.insert(formats, {
+            format = "mobi",
+            label = "MOBI",
+            filename = Util.safeName(clean_title, "book") .. ".mobi",
+            url = abs_mobi,
+        })
+    end
+    if abs_azw3 then
+        table.insert(formats, {
+            format = "azw3",
+            label = "AZW3",
+            filename = Util.safeName(clean_title, "book") .. ".azw3",
+            url = abs_azw3,
+        })
+    end
+
+    local content_kind = "info_only"
+    if has_ebook then
+        content_kind = "ebook"
+    elseif has_audio then
+        content_kind = "audio_only"
+    elseif is_dmca then
+        content_kind = "dmca"
+    end
 
     return {
-        title = Util.decodeHtml(Util.trim(title)),
-        author = author and Util.trim(author) or nil,
-        narrator = narrator and Util.trim(narrator) or nil,
+        title = clean_title,
+        author = author and Util.trim(Util.decodeHtml(author)) or book.author,
+        narrator = narrator and Util.trim(Util.decodeHtml(narrator)) or nil,
         pages = pages,
-        format = format_info and Util.trim(format_info) or nil,
+        format = format_info,
         views = views,
         size = size and Util.trim(size) or nil,
         description = description,
         cover_url = cover_url and Util.absoluteUrl(self.base_url, cover_url) or book.cover_url,
         genres = genres,
-        -- Download URLs
+        -- Download & format capabilities
+        formats = formats,
+        has_ebook = has_ebook,
         has_pdf = has_pdf,
-        pdf_download_url = pdf_download_url and Util.absoluteUrl(self.base_url, pdf_download_url) or nil,
+        pdf_download_url = abs_pdf,
+        pdf_from_readbook = pdf_from_readbook,
+        has_epub = has_epub,
+        epub_download_url = abs_epub,
+        has_mobi = has_mobi,
+        mobi_download_url = abs_mobi,
+        has_azw3 = has_azw3,
+        azw3_download_url = abs_azw3,
         has_audio = has_audio,
-        audio_download_url = audio_download_url and Util.absoluteUrl(self.base_url, audio_download_url) or nil,
-        audio_src = audio_src and Util.absoluteUrl(self.base_url, audio_src) or nil,
+        audio_download_url = abs_audio_dl,
+        audio_src = abs_audio_src,
         audio_size = audio_size,
         audio_chapters = #audio_chapters > 0 and audio_chapters or nil,
-        read_online_url = read_online_url and Util.absoluteUrl(self.base_url, read_online_url) or nil,
+        read_online_url = abs_read,
+        is_dmca = is_dmca,
+        content_kind = content_kind,
+        related_books = #related_books > 0 and related_books or nil,
     }
 end
 
--- Download PDF (may go through Google Drive)
-function Source:downloadPdf(detail, save_path)
-    if not detail.pdf_download_url then
-        return nil, "Sách này không có bản PDF để tải"
+function Source:getBookDetail(book)
+    local html, err = Http:get(book.url, self:getCoverHeaders())
+    if not html then
+        return nil, err
     end
-
-    Debug.write("[Dilib] Downloading PDF: " .. detail.pdf_download_url)
-    return GDrive:download(detail.pdf_download_url, save_path)
+    return self:parseBookDetail(html, book)
 end
 
--- Download audio MP3
+-- Download any ebook format (EPUB, PDF, MOBI, AZW3) via GDriveDownloader
+function Source:downloadEbook(detail, format, save_path)
+    format = tostring(format or "pdf"):lower()
+    local target_url
+    local fallback_url
+    if format == "epub" then
+        target_url = detail.epub_download_url
+    elseif format == "mobi" then
+        target_url = detail.mobi_download_url
+    elseif format == "azw3" then
+        target_url = detail.azw3_download_url
+    else
+        target_url = detail.pdf_download_url or detail.read_online_url
+        if detail.pdf_download_url and detail.read_online_url and detail.read_online_url ~= detail.pdf_download_url then
+            fallback_url = detail.read_online_url
+        end
+    end
+
+    if not target_url then
+        return nil, "Sách này không có bản " .. format:upper() .. " để tải"
+    end
+
+    Debug.write("[Dilib] Downloading " .. format:upper() .. ": " .. target_url)
+    local saved, err = GDrive:download(target_url, save_path)
+    if not saved and fallback_url then
+        Debug.write("[Dilib] Primary PDF link failed (" .. tostring(err) .. "), retrying via readbook Google Drive link: " .. fallback_url)
+        saved, err = GDrive:download(fallback_url, save_path)
+    end
+    return saved, err
+end
+
+function Source:downloadPdf(detail, save_path)
+    return self:downloadEbook(detail, "pdf", save_path)
+end
+
+function Source:downloadEpub(detail, save_path)
+    return self:downloadEbook(detail, "epub", save_path)
+end
+
+-- Download audio MP3 safely via streaming Http:downloadToFile / GDrive
 function Source:downloadAudio(detail, save_path)
     local audio_url = detail.audio_src or detail.audio_download_url
     if not audio_url then
@@ -402,47 +557,35 @@ function Source:downloadAudio(detail, save_path)
     end
 
     Debug.write("[Dilib] Downloading audio: " .. audio_url)
+    local part_path = save_path .. ".part"
+    os.remove(part_path)
 
-    -- Audio download link might also redirect through GDrive
-    if audio_url:match("/audio/") then
-        -- Try direct download first via curl
-        local curl_cmd = string.format("curl -skSL --output '%s.part' --referer '%s' '%s'", 
-            save_path:gsub("'", "'\\''"), 
-            self.base_url .. "/", 
-            audio_url:gsub("'", "'\\''"))
-            
-        local ok = os.execute(curl_cmd)
-        if ok == 0 or ok == true then
-            local rename_ok, rename_err = os.rename(save_path .. ".part", save_path)
-            if rename_ok then
-                return save_path
-            else
-                os.remove(save_path .. ".part")
+    if type(Http.downloadToFile) == "function" then
+        local downloaded, dl_err, headers = Http:downloadToFile(audio_url, part_path, {
+            ["Referer"] = self.base_url .. "/",
+        })
+        if downloaded then
+            local preview = EbookDownloader.readPreview(part_path, 4096)
+            local ct = tostring(headers and (headers["content-type"] or headers["Content-Type"]) or ""):lower()
+            local is_html = ct:find("text/html", 1, true) ~= nil or (preview and preview:match("^%s*<[!hH]") ~= nil)
+            if not is_html and preview and #preview > 0 then
+                os.remove(save_path)
+                local ok, rename_err = os.rename(part_path, save_path)
+                if ok then
+                    return save_path
+                end
+                os.remove(part_path)
+                return nil, "Không thể lưu file: " .. tostring(rename_err)
             end
         end
-        -- Fallback to GDrive handler
-        return GDrive:download(audio_url, save_path)
+        os.remove(part_path)
+        if detail.audio_download_url then
+            return GDrive:download(detail.audio_download_url, save_path)
+        end
+        return nil, dl_err or "Máy chủ không trả về tệp âm thanh hợp lệ"
     end
 
-    -- Direct MP3 URL
-    local curl_cmd = string.format("curl -skSL --output '%s.part' --referer '%s' '%s'", 
-        save_path:gsub("'", "'\\''"), 
-        self.base_url .. "/", 
-        audio_url:gsub("'", "'\\''"))
-        
-    local ok = os.execute(curl_cmd)
-    if ok ~= 0 and ok ~= true then
-        return nil, "Không thể tải audio (curl failed)"
-    end
-
-    local rename_ok, rename_err = os.rename(save_path .. ".part", save_path)
-    if not rename_ok then
-        os.remove(save_path .. ".part")
-        return nil, "Không thể lưu file: " .. tostring(rename_err)
-    end
-
-    Debug.write("[Dilib] Audio download complete via curl: " .. save_path)
-    return save_path
+    return GDrive:download(audio_url, save_path)
 end
 
 -- Build an HTML info page for a book (readable on e-ink)
@@ -505,7 +648,7 @@ function Source:buildInfoPage(detail, save_path)
         table.insert(lines, '  </ol>')
     end
 
-    if #detail.genres > 0 then
+    if detail.genres and #detail.genres > 0 then
         table.insert(lines, '  <hr/>')
         table.insert(lines, '  <p class="meta">Thể loại: ' .. Util.escapeHtml(table.concat(detail.genres, ", ")) .. '</p>')
     end
@@ -522,54 +665,82 @@ function Source:buildInfoPage(detail, save_path)
     return save_path
 end
 
--- Search (AJAX API)
+function Source:parseSearchHtml(html)
+    local stories = {}
+    for anchor_attrs, anchor_content in tostring(html or ""):gmatch("<a([^>]*)>([%s%S]-)</a>") do
+        local href = Util.getAttribute(anchor_attrs, "href")
+        local title = Util.getAttribute(anchor_attrs, "title")
+        local path_only = href and href:gsub("^https?://[^/]+", ""):gsub("[?#].*$", "") or nil
+        if path_only and path_only:match("%-%d+%.html$") and not STATIC_IGNORED_PATHS[path_only]
+                and title and title ~= "" then
+            local cover_url = anchor_content:match('src="([^"]*)"')
+            local author = anchor_content:match("Tác giả%s*:%s*([^\n<]+)")
+            local fmt = anchor_content:match("Định dạng%s*:%s*([^\n<]+)")
+            local clean_title, is_audio = cleanBookTitle(title)
+            if clean_title ~= "" then
+                table.insert(stories, {
+                    source_id = self.id,
+                    title = clean_title,
+                    url = Util.absoluteUrl(self.base_url, path_only),
+                    cover_url = cover_url and Util.absoluteUrl(self.base_url, cover_url) or nil,
+                    kind = self.kind,
+                    author = author and Util.trim(Util.decodeHtml(author)) or nil,
+                    format = fmt and Util.trim(Util.decodeHtml(fmt)) or nil,
+                    is_audio = is_audio,
+                })
+            end
+        end
+    end
+    return Util.uniqueBy(stories, "url")
+end
+
+-- Search (AJAX API + full search fallback)
 function Source:search(query)
-    local encoded = ko_util.urlEncode(query)
+    local trimmed = Util.trim(query)
+    if trimmed == "" then
+        return {}
+    end
+    local encoded = ko_util.urlEncode(trimmed)
     local url = self.base_url .. "/search/ajax-search.php?keyword=" .. encoded
     local html, err = Http:get(url, {
         ["Referer"] = self.base_url .. "/",
         ["X-Requested-With"] = "XMLHttpRequest",
     })
-    if not html then
-        return nil, err
-    end
+    local stories = html and self:parseSearchHtml(html) or {}
 
-    local stories = {}
-    -- Parse search result items
-    for block in html:gmatch('<a[^>]-href="([^"]*)"[^>]-title="([^"]*)"[^>]*>(.-)</a>') do
-        -- block captures are href, title, inner
-    end
-
-    -- Better pattern for the AJAX response
-    for anchor_attrs, anchor_content in html:gmatch("<a([^>]*)>(.-)</a>") do
-        local href = Util.getAttribute(anchor_attrs, "href")
-        local title = Util.getAttribute(anchor_attrs, "title")
-        if href and href:match("%.html$") and title and title ~= "" then
-            local cover_url = anchor_content:match('src="([^"]*)"')
-            -- Extract author
-            local author = anchor_content:match("Tác giả : ([^\n<]+)")
-
-            table.insert(stories, {
-                source_id = self.id,
-                title = Util.decodeHtml(title),
-                url = Util.absoluteUrl(self.base_url, href),
-                cover_url = cover_url and Util.absoluteUrl(self.base_url, cover_url) or nil,
-                kind = self.kind,
-                author = author and Util.trim(author) or nil,
-            })
+    if #stories == 0 then
+        local page_html, page_err = Http:get(self.base_url .. "/tim-kiem/?keyword=" .. encoded, {
+            ["Referer"] = self.base_url .. "/",
+        })
+        if page_html then
+            stories = self:parseListing(page_html)
+        elseif not html then
+            return nil, err or page_err
         end
     end
 
     return Util.uniqueBy(stories, "url")
 end
 
--- Compatibility: getCompleted returns categories for browsing
 function Source:getCompleted(page)
+    local result, err = self:getCategoryBooks({
+        name = "Thư Viện Sách Mới",
+        url = self.base_url .. "/thu-vien/",
+    }, page or 1)
+    if not result then
+        return {
+            stories = {},
+            genres = {},
+            page = 1,
+            total_pages = 1,
+            title = "Dilib Thư Viện Số",
+        }, err
+    end
     return {
-        stories = {},
+        stories = result.books or {},
         genres = {},
-        page = 1,
-        total_pages = 1,
+        page = result.page or 1,
+        total_pages = result.total_pages or 1,
         title = "Dilib Thư Viện Số",
     }
 end

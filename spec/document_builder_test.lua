@@ -154,8 +154,8 @@ assertEqual(nil, comic_path, "Rejects non-image comic payload")
 assert(comic_err, "Should return an error")
 assertEqual(
     true,
-    tostring(comic_err):find("Lỗi", 1, true) ~= nil,
-    "Reports invalid comic image"
+    tostring(comic_err):find("Không tải được ảnh trang nào", 1, true) ~= nil,
+    "Reports that no comic page was downloaded"
 )
 
 os.remove(output_path)

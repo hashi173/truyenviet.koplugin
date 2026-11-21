@@ -7,6 +7,11 @@ local Source = {
     name = "TruyenQQ",
     kind = "comic",
     base_url = "https://truyenqqko.com",
+    legacy_base_urls = {
+        "https://truyenqqto.com",
+        "https://truyenqqviet.com",
+        "https://truyenqqgo.com",
+    },
     reversed_chapters = true,
 }
 

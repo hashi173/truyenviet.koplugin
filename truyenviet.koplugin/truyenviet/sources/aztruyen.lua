@@ -130,7 +130,7 @@ function Source:getCompleted(page)
         stories = parseStories(html, self.id)
     end
 
-    local total_pages = tonumber(html:match('href="[^"]+trang%-(%d+)/"[^>]*>Cuối')) or page
+    local total_pages = Util.maxPage(html, page)
     return {
         stories = stories,
         genres = parseGenres(html),
@@ -147,7 +147,7 @@ function Source:getGenre(genre, page)
     local html, err = Http:get(url, stdHeaders(self.base_url))
     if not html then return nil, err end
     
-    local total_pages = tonumber(html:match('href="[^"]+trang%-(%d+)/"[^>]*>Cuối')) or page
+    local total_pages = Util.maxPage(html, page)
     return {
         stories = parseStories(html, self.id),
         genres = parseGenres(html),
@@ -157,10 +157,7 @@ function Source:getGenre(genre, page)
     }
 end
 
-function Source:getStoryDetails(story)
-    local html, err = Http:get(story.url, stdHeaders(self.base_url))
-    if not html then return nil, err end
-    
+function Source:parseStoryDetails(html, story)
     local title = html:match('<h1[^>]*>([^<]+)</h1>')
     local author = html:match('Tác giả:%s*</span>%s*<a[^>]*>([^<]+)</a>')
         or html:match('<span itemprop="name">%s*<a[^>]+rel="author"[^>]*>([^<]+)</a>')
@@ -175,31 +172,42 @@ function Source:getStoryDetails(story)
     end
     
     return {
-        title = title and Util.decodeHtml(Util.trim(title)) or story.title,
+        title = title and Util.decodeHtml(Util.trim(title)) or (story and story.title),
         author = author and Util.trim(author) or nil,
         description = description,
     }
 end
 
-function Source:getStoryPage(story, page)
-    page = page or 1
-    local url = Util.withTrailingSlash(story.url)
-    if page > 1 then url = url .. "trang-" .. page .. "/" end
-    local html, err = Http:get(url, stdHeaders(self.base_url))
+function Source:getStoryDetails(story)
+    local html, err = Http:get(story.url, stdHeaders(self.base_url))
     if not html then return nil, err end
-    
+    return self:parseStoryDetails(html, story)
+end
+
+function Source:parseStoryPage(html, story, page)
+    page = page or 1
     local chapters = {}
     local seen = {}
     
-    local story_path = story.url:gsub("^https?://[^/]+", "")
-    story_path = story_path:gsub("/$", "")
+    local story_path = tostring(story.url or ""):gsub("^https?://[^/]+", ""):gsub("/+$", "")
+    local escaped_story_path = story_path:gsub("([^%w])", "%%%1")
     
     local all_matches = {}
-    for anchor in html:gmatch('<a%s+[^>]*>') do
-        local href = anchor:match('href="(https?://aztruyen%.top' .. story_path:gsub("%-", "%%-") .. '/chuong[^"]+)"')
-        local title = anchor:match('title="([^"]+)"')
-        if href and title then
-            table.insert(all_matches, {href = href, title = title})
+    for anchor_attrs, anchor_inner in html:gmatch("<a([^>]*)>([%s%S]-)</a>") do
+        local href = Util.getAttribute(anchor_attrs, "href")
+        if href then
+            local path = href:gsub("^https?://[^/]+", "")
+            local child = path:match("^" .. escaped_story_path .. "/([^/#%?]+)/?$")
+            if child and not child:match("^trang%-%d+$") then
+                local title = Util.getAttribute(anchor_attrs, "title") or Util.stripTags(anchor_inner)
+                title = Util.trim(Util.decodeHtml(title))
+                if title ~= "" and title ~= "Đọc từ đầu" and title ~= "Đọc mới nhất" and title ~= "Đọc tiếp" then
+                    table.insert(all_matches, {
+                        href = Util.absoluteUrl(self.base_url, href),
+                        title = title,
+                    })
+                end
+            end
         end
     end
 
@@ -209,7 +217,7 @@ function Source:getStoryPage(story, page)
         if not seen[href] then
             seen[href] = true
             table.insert(reversed_chapters, {
-                title = Util.trim(all_matches[i].title),
+                title = all_matches[i].title,
                 url = href,
                 source_id = self.id,
                 story_url = story.url,
@@ -222,8 +230,8 @@ function Source:getStoryPage(story, page)
         table.insert(chapters, reversed_chapters[i])
     end
 
-    local total_pages = tonumber(html:match('href="[^"]+trang%-(%d+)/"[^>]*>Cuối')) or page
-    story.details = self:getStoryDetails(story)
+    local total_pages = Util.maxPage(html, page)
+    story.details = self:parseStoryDetails(html, story)
     
     return {
         story = story,
@@ -231,6 +239,15 @@ function Source:getStoryPage(story, page)
         page = page,
         total_pages = total_pages,
     }
+end
+
+function Source:getStoryPage(story, page)
+    page = page or 1
+    local url = Util.withTrailingSlash(story.url)
+    if page > 1 then url = url .. "trang-" .. page .. "/" end
+    local html, err = Http:get(url, stdHeaders(self.base_url))
+    if not html then return nil, err end
+    return self:parseStoryPage(html, story, page)
 end
 
 -- LƯU Ý: log thực tế cho thấy request tải chương trả về 200 (HTML thật, không
@@ -307,7 +324,7 @@ function Source:getChapter(chapter)
 end
 
 function Source:getChapterAsync(chapter)
-    local html, err = Http:requestAsync("GET", chapter.url, stdHeaders(self.base_url))
+    local html, err = Http:requestAsync("GET", chapter.url, nil, stdHeaders(self.base_url))
     if not html then return nil, err end
 
     local content = extractChapterContent(html)

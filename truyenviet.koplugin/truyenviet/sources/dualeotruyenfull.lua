@@ -86,12 +86,16 @@ local function parseStories(html, source_id)
     return stories
 end
 
+function Source:parseSearchJson(raw_json)
+    return Util.parseInitliseSearchJson(raw_json, self)
+end
+
 function Source:search(query)
     local encoded = ko_util.urlEncode(query)
-    local url = self.base_url .. "/?s=" .. encoded
-    local html, err = Http:get(url, stdHeaders(self.base_url))
-    if not html then return nil, err end
-    return parseStories(html, self.id)
+    local url = self.base_url .. "/wp-json/initlise/v1/search?term=" .. encoded
+    local body, err = Http:getJson(url, stdHeaders(self.base_url))
+    if not body then return nil, err end
+    return self:parseSearchJson(body)
 end
 
 function Source:getCompleted(page)
@@ -101,7 +105,7 @@ function Source:getCompleted(page)
     local html, err = Http:get(url, stdHeaders(self.base_url))
     
     local stories = html and parseStories(html, self.id) or {}
-    local total_pages = html and (tonumber(html:match('page/(%d+)/"[^>]*>Cuối')) or page) or page
+    local total_pages = html and Util.maxPage(html, page) or page
 
     if #stories == 0 then
         url = self.base_url
@@ -109,7 +113,7 @@ function Source:getCompleted(page)
         html, err = Http:get(url, stdHeaders(self.base_url))
         if not html then return nil, err end
         stories = parseStories(html, self.id)
-        total_pages = tonumber(html:match('page/(%d+)/"[^>]*>Cuối')) or page
+        total_pages = Util.maxPage(html, page)
     end
 
     return {
@@ -134,9 +138,7 @@ function Source:getGenre(genre, page)
     local html, err = Http:get(url, stdHeaders(self.base_url))
     if not html then return nil, err end
     
-    local total_pages = tonumber(html:match('page/(%d+)/"[^>]*>Cuối')) 
-        or tonumber(html:match('page=(%d+)"[^>]*>Cuối'))
-        or page
+    local total_pages = Util.maxPage(html, page)
     return {
         stories = parseStories(html, self.id),
         genres = DUALEO_GENRES,
@@ -146,10 +148,7 @@ function Source:getGenre(genre, page)
     }
 end
 
-function Source:getStoryDetails(story)
-    local html, err = Http:get(story.url, stdHeaders(self.base_url))
-    if not html then return nil, err end
-    
+function Source:parseStoryDetails(html, story)
     local title = html:match('<h1[^>]*>([^<]+)</h1>')
         or html:match('<title>([^<]+)</title>')
     
@@ -165,27 +164,33 @@ function Source:getStoryDetails(story)
     end
     
     return {
-        title = title and Util.decodeHtml(Util.trim(title)) or story.title,
+        title = title and Util.decodeHtml(Util.trim(title)) or (story and story.title),
         author = author and Util.trim(author) or nil,
         description = description,
     }
 end
 
+function Source:getStoryDetails(story)
+    local html, err = Http:get(story.url, stdHeaders(self.base_url))
+    if not html then return nil, err end
+    return self:parseStoryDetails(html, story)
+end
+
 function Source:getStoryPage(story, ko_page)
     ko_page = ko_page or 1
+    local page1_html
     
     -- Step 1: Find total_pages if unknown
     if not story.total_pages then
         local url = Util.withTrailingSlash(story.url)
-        local html, err = Http:get(url, stdHeaders(self.base_url))
-        if not html then return nil, err end
+        local err
+        page1_html, err = Http:get(url, stdHeaders(self.base_url))
+        if not page1_html then return nil, err end
         
-        local tp = tonumber(html:match('page/(%d+)/"[^>]*>Cuối')) or 1
-        if tp == 1 then
-            for p in html:gmatch('chuong/page/(%d+)') do
-                local pn = tonumber(p)
-                if pn and pn > tp then tp = pn end
-            end
+        local tp = Util.maxPage(page1_html, 1)
+        for p in page1_html:gmatch("chuong/page/(%d+)") do
+            local pn = tonumber(p)
+            if pn and pn > tp then tp = pn end
         end
         story.total_pages = tp
     end
@@ -194,16 +199,19 @@ function Source:getStoryPage(story, ko_page)
     local website_page = story.total_pages - ko_page + 1
     if website_page < 1 then website_page = 1 end
     
-    local url = Util.withTrailingSlash(story.url)
-    if website_page > 1 then url = url .. "chuong/page/" .. website_page .. "/" end
-    
-    local html, err = Http:get(url, stdHeaders(self.base_url))
-    if not html then return nil, err end
+    local html = (website_page == 1) and page1_html or nil
+    if not html then
+        local url = Util.withTrailingSlash(story.url)
+        if website_page > 1 then url = url .. "chuong/page/" .. website_page .. "/" end
+        local err
+        html, err = Http:get(url, stdHeaders(self.base_url))
+        if not html then return nil, err end
+    end
     
     local chapters = {}
     local seen = {}
     local all_matches = {}
-    for href, inner_html in html:gmatch('<a[^>]+href="(https?://dualeotruyenfull%.net/[^"]+chuong[^"]+)"[^>]*>(.-)</a>') do
+    for href, inner_html in html:gmatch('<a[^>]+href="(https?://[^"]+chuong[^"]+)"[^>]*>(.-)</a>') do
         if not href:find("/page/") then
             local title = inner_html:match('<h3[^>]*>(.-)</h3>') or inner_html
             table.insert(all_matches, {href = href, title = Util.trim(Util.stripTags(title))})
@@ -225,7 +233,7 @@ function Source:getStoryPage(story, ko_page)
         end
     end
     
-    story.details = self:getStoryDetails(story)
+    story.details = story.details or self:parseStoryDetails(page1_html or html, story)
     
     return {
         story = story,

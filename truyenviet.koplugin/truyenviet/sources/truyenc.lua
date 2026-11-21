@@ -122,12 +122,8 @@ local function parseStories(html, source_id)
 end
 
 function Source:search(query)
-    -- LƯU Ý: chưa xác minh được truyenc.com có endpoint tìm kiếm URL-based
-    -- hay không (không thấy ô tìm kiếm dùng GET query string khi fetch thật
-    -- các trang danh mục). Thử /tim-kiem/{query} theo mẫu chung của các
-    -- nguồn khác trong plugin; nếu sai cần bạn cho biết URL tìm kiếm thật.
-    local encoded = ko_util.urlEncode(query)
-    local url = self.base_url .. "/tim-kiem/" .. encoded
+    local encoded = ko_util.urlEncode(query):gsub("%%20", "+")
+    local url = self.base_url .. "/?s=" .. encoded
     local html, err = Http:get(url, stdHeaders(self.base_url))
     if not html then return nil, err end
     return parseStories(html, self.id)
@@ -135,18 +131,13 @@ end
 
 function Source:getCompleted(page)
     page = page or 1
-    -- Site không có khái niệm "truyện hoàn thành" riêng biệt đã xác nhận
-    -- được; dùng mục an toàn đầu tiên (Truyện ma) làm danh sách mặc định,
-    -- các mục còn lại truy cập qua "Thể loại" (safeGenreList).
     local first = CATEGORIES[1]
     local url = self.base_url .. first.path
     if page > 1 then url = url .. "?page=" .. page end
     local html, err = Http:get(url, stdHeaders(self.base_url))
     if not html then return nil, err end
 
-    local total_pages = tonumber(html:match('trang%-(%d+)"[^>]*>Trang cuối'))
-        or tonumber(html:match('%?page=(%d+)"[^>]*>»'))
-        or page
+    local total_pages = Util.maxPage(html, page)
 
     return {
         stories = parseStories(html, self.id),
@@ -159,22 +150,17 @@ end
 
 function Source:getGenre(genre, page)
     page = page or 1
-    -- An toàn ở lớp thứ hai: chỉ cho phép fetch nếu path nằm trong danh sách
-    -- SAFE_PATH_SET, kể cả khi genre.url bị truyền vào từ nơi khác trong
-    -- code (ví dụ do lỗi lập trình sau này vô tình nối thêm mục ngoài ý muốn).
-    local path = genre.url:gsub("^https?://truyenc%.com", "")
+    local path = genre.url:gsub("^https?://[^/]+", "")
     if not PATH_SET[path] then
         return nil, "Thể loại này không được hỗ trợ trong TruyenC."
     end
 
-    local url = genre.url
+    local url = self.base_url .. path
     if page > 1 then url = url .. "?page=" .. page end
     local html, err = Http:get(url, stdHeaders(self.base_url))
     if not html then return nil, err end
 
-    local total_pages = tonumber(html:match('trang%-(%d+)"[^>]*>Trang cuối'))
-        or tonumber(html:match('%?page=(%d+)"[^>]*>»'))
-        or page
+    local total_pages = Util.maxPage(html, page)
 
     return {
         stories = parseStories(html, self.id),
@@ -185,10 +171,7 @@ function Source:getGenre(genre, page)
     }
 end
 
-function Source:getStoryDetails(story)
-    local html, err = Http:get(story.url, stdHeaders(self.base_url))
-    if not html then return nil, err end
-
+function Source:parseStoryDetails(html, story)
     local title = html:match('<h1[^>]*>([^<]+)</h1>')
     local author = html:match('Tác giả:%s*<[^>]+>%s*<strong>([^<]+)</strong>')
         or html:match('Tác giả:%s*<strong>([^<]+)</strong>')
@@ -196,11 +179,9 @@ function Source:getStoryDetails(story)
     local status = html:match('Tình trạng:%s*([^<\n]+)')
     if status then status = Util.trim(status) end
 
-    -- Thể loại: trang chi tiết thật có 1 dòng liệt kê nhiều link thể loại
-    -- ngay dưới ảnh bìa (vd "Truyện ma · Truyện ma dài kỳ · Truyện kinh dị").
     local genres = {}
-    for href, name in html:gmatch('<a[^>]+href="(https?://truyenc%.com/[%w%-]+)"[^>]*title="([^"]+)"') do
-        local path = href:gsub("^https?://truyenc%.com", "")
+    for href, name in html:gmatch('<a[^>]+href="(https?://[^/]+/[%w%-]+)"[^>]*title="([^"]+)"') do
+        local path = href:gsub("^https?://[^/]+", "")
         if PATH_SET[path] then
             table.insert(genres, Util.decodeHtml(name))
         end
@@ -216,7 +197,7 @@ function Source:getStoryDetails(story)
     end
 
     return {
-        title = title and Util.decodeHtml(Util.trim(title)) or story.title,
+        title = title and Util.decodeHtml(Util.trim(title)) or (story and story.title),
         author = author and Util.trim(author) or nil,
         status = status,
         genres = genres,
@@ -224,35 +205,33 @@ function Source:getStoryDetails(story)
     }
 end
 
-function Source:getStoryPage(story, page)
-    page = page or 1
+function Source:getStoryDetails(story)
     local html, err = Http:get(story.url, stdHeaders(self.base_url))
     if not html then return nil, err end
+    return self:parseStoryDetails(html, story)
+end
 
-    -- Chương thật dạng: https://truyenc.com/truyen/{slug}/chuong-{n}-{ten}-{id}
-    -- (đã xác nhận qua fetch thật trang cam-tu-ky-bao-79). Site có vẻ liệt
-    -- kê TOÀN BỘ chương trên 1 trang chi tiết (không phân trang danh sách
-    -- chương riêng) — nên total_pages luôn = 1 trừ khi phát hiện phân trang
-    -- thật khi test.
+function Source:parseStoryPage(html, story, page)
+    page = page or 1
     local chapters = {}
     local seen = {}
     
-    local story_slug = story.url:match("/truyen/([^/]+)")
+    local story_slug = tostring(story.url or ""):match("/truyen/([^/]+)")
     local base_slug = ""
     if story_slug then
         base_slug = story_slug:gsub("%-%d+$", "")
     end
     
-    local pattern = 'href="(https?://truyenc%.com/truyen/[^"]+/chuong%-[^"]+)"'
+    local pattern = 'href="(https?://[^/]+/truyen/[^"]+/chuong%-[^"]+)"'
     if base_slug ~= "" then
-        pattern = 'href="(https?://truyenc%.com/truyen/' .. base_slug:gsub("%-", "%%-") .. '/[^"]+)"'
+        pattern = 'href="(https?://[^/]+/truyen/' .. base_slug:gsub("%-", "%%-") .. '/[^"]+)"'
     end
     
     local all_matches = {}
     for anchor in html:gmatch('<a%s+[^>]*>') do
         local href = anchor:match(pattern)
         local title = anchor:match('title="([^"]+)"')
-        if href and title then
+        if href and title and Util.trim(title) ~= "Đọc truyện" then
             table.insert(all_matches, {href = href, title = title})
         end
     end
@@ -276,14 +255,21 @@ function Source:getStoryPage(story, page)
         table.insert(chapters, reversed_chapters[i])
     end
 
-    story.details = self:getStoryDetails(story)
+    story.details = self:parseStoryDetails(html, story)
 
     return {
         story = story,
         chapters = chapters,
-        page = 1,
+        page = page,
         total_pages = 1,
     }
+end
+
+function Source:getStoryPage(story, page)
+    page = page or 1
+    local html, err = Http:get(story.url, stdHeaders(self.base_url))
+    if not html then return nil, err end
+    return self:parseStoryPage(html, story, page)
 end
 
 -- CHƯA XÁC MINH ĐƯỢC: tên class/id thẻ bao nội dung chương thật (công cụ
@@ -372,7 +358,10 @@ function Source:getChapter(chapter)
 
     local content = extractChapterContent(html, chapter.title)
     if not content then
-        return nil, "Không tìm thấy nội dung chương (cần xác minh lại tên thẻ HTML thật trên máy)."
+        if html:lower():find("youtube%.com/embed") or html:lower():find("<audio") then
+            return nil, "Mục này trên TruyenC là bản Audio / YouTube nhúng, không có văn bản để đọc trên máy đọc sách."
+        end
+        return nil, "Không tìm thấy nội dung chương."
     end
 
     return Util.sanitizeContentHtml(content)
@@ -384,7 +373,10 @@ function Source:getChapterAsync(chapter)
 
     local content = extractChapterContent(html, chapter.title)
     if not content then
-        return nil, "Không tìm thấy nội dung chương (cần xác minh lại tên thẻ HTML thật trên máy)."
+        if html:lower():find("youtube%.com/embed") or html:lower():find("<audio") then
+            return nil, "Mục này trên TruyenC là bản Audio / YouTube nhúng, không có văn bản để đọc trên máy đọc sách."
+        end
+        return nil, "Không tìm thấy nội dung chương."
     end
 
     return Util.sanitizeContentHtml(content)
